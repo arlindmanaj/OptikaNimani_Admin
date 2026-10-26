@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { LocaleProvider } from "./locale";
+import "./brand.css";
 
 export const metadata: Metadata = {
-  title: "Nimani | Customer Studio",
+  title: "Optika Nimani | Menaxhimi i klientëve",
   description:
-    "Customer care, prescription history and family records for Optika Nimani.",
+    "Regjistri i klientëve, historiku i recetave dhe blerjeve për Optika Nimani.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
@@ -17,8 +19,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">{children}</body>
+    <html lang="sq">
+      <body className="antialiased">
+        <LocaleProvider>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }

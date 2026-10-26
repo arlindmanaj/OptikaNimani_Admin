@@ -38,6 +38,8 @@ import {
   Copy,
   CheckCircle2,
   SlidersHorizontal,
+  ShoppingBag,
+  Pencil,
 } from "lucide-react";
 import {
   customerInput,
@@ -57,17 +59,43 @@ import {
   type Grid,
   type Family,
   type Care,
+  purchaseInput,
+  purchaseCategories,
+  type Purchase,
+  type PurchaseInput,
 } from "./model";
+import PurchaseForm from "./purchase-form";
+import { useLocale, LanguageSwitch, dateLabel, money } from "./locale";
 
 type View =
-  "customers" | "prescriptions" | "families" | "aftercare" | "settings";
-type Tab = "overview" | "prescriptions" | "family" | "aftercare" | "activity";
+  | "customers"
+  | "prescriptions"
+  | "families"
+  | "aftercare"
+  | "purchases"
+  | "settings";
+type Tab =
+  | "overview"
+  | "prescriptions"
+  | "family"
+  | "aftercare"
+  | "purchases"
+  | "activity";
+const tabLabels: Record<Tab, string> = {
+  overview: "Overview",
+  prescriptions: "Prescriptions",
+  family: "Family connections",
+  aftercare: "Aftercare",
+  purchases: "Purchases",
+  activity: "Activity",
+};
 type Modal = {
   kind:
     | "customer"
     | "rx"
     | "family"
     | "care"
+    | "purchase"
     | "viewRx"
     | "compare"
     | "archive"
@@ -76,6 +104,7 @@ type Modal = {
   customer?: Customer;
   rx?: Prescription;
   family?: Family;
+  purchase?: Purchase;
 };
 const empty: Store = {
   customers: [],
@@ -84,15 +113,8 @@ const empty: Store = {
   aftercare: [],
   attachments: [],
   audit: [],
+  purchases: [],
 };
-const fmt = (v: string) =>
-  v
-    ? new Date(v.slice(0, 10) + "T12:00:00").toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "—";
 const initials = (c?: Customer) =>
   c ? (c.firstName[0] + c.lastName[0]).toUpperCase() : "N";
 const signed = (v: string) =>
@@ -125,16 +147,13 @@ function latestRx(s: Store, cid: string) {
 function Logo() {
   return (
     <div className="brand">
-      <svg viewBox="0 0 60 36" aria-hidden="true">
-        <g fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="15" cy="20" r="11" />
-          <circle cx="45" cy="20" r="11" />
-          <path d="M26 18q4-5 8 0M4 17 1 7m55 10 3-10" />
-        </g>
-      </svg>
-      <div>
-        NIMANI<small>OPTIKA · CUSTOMER STUDIO</small>
-      </div>
+      <img
+        src="/optika-nimani-logo.png"
+        alt="OPTIKA NIMANI — Premium Eyewear"
+      />
+      <span className="brand-mobile" aria-hidden="true">
+        ON
+      </span>
     </div>
   );
 }
@@ -177,10 +196,11 @@ function Empty({
   children: ReactNode;
   action?: ReactNode;
 }) {
+  const { t } = useLocale();
   return (
     <div className="empty-state">
       <span className="empty-icon">{icon}</span>
-      <h3>{title}</h3>
+      <h3>{t(title)}</h3>
       <p>{children}</p>
       {action}
     </div>
@@ -195,11 +215,12 @@ function Field({
   children: ReactNode;
   hint?: string;
 }) {
+  const { t } = useLocale();
   return (
     <label className="field">
-      <span>{label}</span>
+      <span>{t(label)}</span>
       {children}
-      {hint && <small>{hint}</small>}
+      {hint && <small>{t(hint)}</small>}
     </label>
   );
 }
@@ -216,6 +237,8 @@ function Dialog({
   onClose: () => void;
   wide?: boolean;
 }) {
+  const { t } = useLocale();
+
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -246,12 +269,12 @@ function Dialog({
     >
       <div className="dialog-head">
         <div>
-          <h2 id="dialog-title">{title}</h2>
-          {subtitle && <p>{subtitle}</p>}
+          <h2 id="dialog-title">{t(title)}</h2>
+          {subtitle && <p>{t(subtitle)}</p>}
         </div>
         <button
           className="icon-button"
-          aria-label="Close dialog"
+          aria-label={t("Close dialog")}
           onClick={onClose}
         >
           <X size={20} />
@@ -262,16 +285,18 @@ function Dialog({
   );
 }
 function GridTable({ rx }: { rx: RxInput }) {
+  const { t, language } = useLocale();
+
   return (
     <div className="grid-scroll">
       <table className="rx-grid">
         <thead>
           <tr>
-            <th>Purpose</th>
-            <th>Eye</th>
+            <th>{t("Purpose")}</th>
+            <th>{t("Eye")}</th>
             <th>SPH</th>
             <th>CYL</th>
-            <th>AXIS</th>
+            <th>{t("AXIS")}</th>
             <th>
               PD <small>mm</small>
             </th>
@@ -285,13 +310,13 @@ function GridTable({ rx }: { rx: RxInput }) {
                 <tr key={key + eye} className={i === 0 ? "group-start" : ""}>
                   {i === 0 && (
                     <th rowSpan={2}>
-                      {label}
-                      <small>{al}</small>
+                      {t(label)}
+                      <small>{language === "sq" ? label : al}</small>
                     </th>
                   )}
                   <td>
                     <b>{eye.toUpperCase()}</b>
-                    <small>{eye === "od" ? "Right" : "Left"}</small>
+                    <small>{eye === "od" ? t("Right") : t("Left")}</small>
                   </td>
                   <td>{signed(e.sph)}</td>
                   <td>{signed(e.cyl)}</td>
@@ -312,6 +337,8 @@ function GridTable({ rx }: { rx: RxInput }) {
 }
 
 export default function Studio({ displayName }: { displayName: string }) {
+  const { t, language } = useLocale();
+  const fmt = (v: string) => dateLabel(v, language);
   const [data, setData] = useState<Store>(empty),
     [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
@@ -349,6 +376,7 @@ export default function Studio({ displayName }: { displayName: string }) {
           "prescriptions",
           "families",
           "aftercare",
+          "purchases",
           "settings",
         ].includes(p.get("view") || "")
           ? p.get("view")
@@ -362,6 +390,7 @@ export default function Studio({ displayName }: { displayName: string }) {
           "family",
           "aftercare",
           "activity",
+          "purchases",
         ].includes(p.get("tab") || "")
           ? p.get("tab")
           : "overview") as Tab,
@@ -488,12 +517,21 @@ export default function Studio({ displayName }: { displayName: string }) {
           b.date.localeCompare(a.date) ||
           b.createdAt.localeCompare(a.createdAt),
       );
+  const getPurchases = (cid: string) =>
+    data.purchases
+      .filter((p) => p.customerId === cid)
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) ||
+          b.createdAt.localeCompare(a.createdAt),
+      );
   const hasSamples = data.customers.some((c) => c.demo);
   const nav = [
     ["customers", "Customers", Users],
     ["prescriptions", "Prescriptions", Glasses],
     ["families", "Family connections", Network],
     ["aftercare", "Aftercare", HeartHandshake],
+    ["purchases", "Purchases", ShoppingBag],
   ] as const;
   const headings = {
     customers: [
@@ -510,6 +548,7 @@ export default function Studio({ displayName }: { displayName: string }) {
       "Keep the small details that make great service.",
     ],
     settings: ["Workspace settings", "Your records, your workspace."],
+    purchases: ["Purchase history", "What they chose, remembered."],
   } as const;
   function exportData() {
     const b = new Blob(
@@ -548,20 +587,20 @@ export default function Studio({ displayName }: { displayName: string }) {
             </span>
             <div>
               <h3>{fmt(rx.date)}</h3>
-              <small>{rx.doctor || "Prescriber not recorded"}</small>
+              <small>{rx.doctor || t("Prescriber not recorded")}</small>
             </div>
           </div>
           <div className="row">
             <Badge tone={replaced ? "amber" : "green"}>
               {replaced
-                ? "Corrected"
+                ? t("Corrected")
                 : rx.supersedesId
-                  ? "Revision"
-                  : "Recorded"}
+                  ? t("Revision")
+                  : t("Recorded")}
             </Badge>
             <button
               className="icon-button"
-              aria-label={`Open prescription ${fmt(rx.date)}`}
+              aria-label={t("Open prescription {date}", { date: fmt(rx.date) })}
               onClick={() =>
                 open({ kind: "viewRx", rx, customer: getC(rx.customerId) })
               }
@@ -573,9 +612,10 @@ export default function Studio({ displayName }: { displayName: string }) {
         <GridTable rx={rx} />
         <div className="rx-footer">
           <span>
-            {rx.pdMode === "binocular" ? "Binocular PD" : "Monocular PD"} ·{" "}
+            {rx.pdMode === "binocular" ? t("Binocular PD") : t("Monocular PD")}{" "}
+            ·{" "}
             {data.attachments.filter((a) => a.prescriptionId === rx.id).length}{" "}
-            attachments
+            {t("attachments")}
           </span>
           {!compact && (
             <label className="check-label">
@@ -590,7 +630,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                   )
                 }
               />
-              Compare
+              {t("Compare")}
             </label>
           )}
         </div>
@@ -609,20 +649,20 @@ export default function Studio({ displayName }: { displayName: string }) {
           <span>
             <b>{name(c)}</b>
             <small className="capitalize">
-              {relation(f, cid)}
-              {c.archived ? " · Archived" : ""}
+              {t(relation(f, cid))}
+              {c.archived ? t(" · Archived") : ""}
             </small>
           </span>
         </button>
         <div className="row">
           {(isContact || contactFor) && (
             <Badge tone="green">
-              {isContact ? "Contact person" : "Contact for relative"}
+              {isContact ? t("Contact person") : t("Contact for relative")}
             </Badge>
           )}
           <button
             className="icon-button"
-            aria-label={`Remove connection to ${name(c)}`}
+            aria-label={t("Remove connection to {name}", { name: name(c) })}
             onClick={() =>
               open({ kind: "unlink", customer: getC(cid), family: f })
             }
@@ -647,7 +687,7 @@ export default function Studio({ displayName }: { displayName: string }) {
         </span>
         <div>
           <div className="row spread">
-            <h3>{a.kind}</h3>
+            <h3>{t(a.kind)}</h3>
             <small>{fmt(a.date)}</small>
           </div>
           {showPerson && (
@@ -660,7 +700,83 @@ export default function Studio({ displayName }: { displayName: string }) {
             </button>
           )}
           <p className="preserve">{a.notes}</p>
-          <small>Recorded by {a.author}</small>
+          <small>
+            {t("Recorded by")} {a.author}
+          </small>
+        </div>
+      </article>
+    );
+  }
+  function purchaseCard(p: Purchase, showPerson = false) {
+    const c = getC(p.customerId);
+    const rx = data.prescriptions.find((r) => r.id === p.prescriptionId);
+    return (
+      <article className="purchase-entry" key={p.id}>
+        <span className="purchase-icon">
+          <ShoppingBag size={19} />
+        </span>
+        <div className="purchase-content">
+          <div className="row spread">
+            <div>
+              <h3>{p.description}</h3>
+              {showPerson && (
+                <button
+                  className="text-link"
+                  onClick={() => go("customers", p.customerId, "purchases")}
+                >
+                  {name(c)}
+                  <ArrowUpRight size={13} />
+                </button>
+              )}
+            </div>
+            <div className="purchase-amount">
+              {p.totalCents === null ? (
+                <small>{t("Amount not recorded")}</small>
+              ) : (
+                money(p.totalCents, language)
+              )}
+            </div>
+          </div>
+          <div className="purchase-meta">
+            <Badge>{t(p.category)}</Badge>
+            <span>{[p.brand, p.model].filter(Boolean).join(" · ")}</span>
+            <span>
+              {p.quantity} {t(p.quantity === 1 ? "unit" : "units")}
+            </span>
+            <span>{fmt(p.date)}</span>
+          </div>
+          {p.notes && <p className="preserve">{p.notes}</p>}
+          {p.reference && (
+            <small>
+              {t("Receipt / reference")}: {p.reference}
+            </small>
+          )}
+          <div className="purchase-bottom">
+            <small>
+              {t("Recorded by")} {p.author}
+            </small>
+            <div className="row">
+              {rx && (
+                <button
+                  className="text-link"
+                  onClick={() => open({ kind: "viewRx", customer: c, rx })}
+                >
+                  {t("View linked prescription")} <ArrowUpRight size={13} />
+                </button>
+              )}
+              {!c?.archived && (
+                <button
+                  className="icon-button"
+                  aria-label={t("Edit purchase")}
+                  onClick={() =>
+                    open({ kind: "purchase", customer: c, purchase: p })
+                  }
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </article>
     );
@@ -669,11 +785,11 @@ export default function Studio({ displayName }: { displayName: string }) {
     <div className="app-shell">
       <aside className="sidebar">
         <Logo />
-        <div className="workspace-label">THE WORKSPACE</div>
-        <nav aria-label="Main navigation">
+        <div className="workspace-label">{t("THE WORKSPACE")}</div>
+        <nav aria-label={t("Main navigation")}>
           {nav.map(([key, label, Icon]) => (
             <button
-              aria-label={label}
+              aria-label={t(label)}
               key={key}
               className={`nav-item ${view === key ? "active" : ""}`}
               onClick={() => {
@@ -682,7 +798,7 @@ export default function Studio({ displayName }: { displayName: string }) {
               }}
             >
               <Icon size={19} />
-              <span>{label}</span>
+              <span>{t(label)}</span>
               {key === "customers" && (
                 <span className="nav-count">{active.length}</span>
               )}
@@ -693,9 +809,9 @@ export default function Studio({ displayName }: { displayName: string }) {
           <div className="sidebar-note">
             <span className="tiny-star">✳</span>
             <p>
-              Good care starts
+              {t("Good care starts")}
               <br />
-              with knowing people.
+              {t("with knowing people.")}
             </p>
             <span>OPTIKA NIMANI</span>
           </div>
@@ -704,7 +820,7 @@ export default function Studio({ displayName }: { displayName: string }) {
             onClick={() => go("settings")}
           >
             <Settings size={18} />
-            Workspace settings
+            {t("Workspace settings")}
           </button>
           <div className="account">
             <span className="user-avatar">{displayName[0]?.toUpperCase()}</span>
@@ -714,7 +830,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                   ? displayName.split("@")[0]
                   : displayName}
               </b>
-              <small>Private workspace</small>
+              <small>{t("Private workspace")}</small>
             </div>
             <ShieldCheck size={17} />
           </div>
@@ -723,16 +839,16 @@ export default function Studio({ displayName }: { displayName: string }) {
       <div className="main-shell">
         <header className="topbar">
           <div className="breadcrumbs">
-            <span>Workspace</span>
+            <span>{t("Workspace")}</span>
             <ChevronRight size={14} />
-            <b>{customer ? name(customer) : headings[view][0]}</b>
+            <b>{customer ? name(customer) : t(headings[view][0])}</b>
           </div>
           <div className="global-search">
             <Search size={17} />
             <input
               ref={searchRef}
-              aria-label="Search customers"
-              placeholder="Search customers…"
+              aria-label={t("Search customers")}
+              placeholder={t("Search customers…")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -741,20 +857,21 @@ export default function Studio({ displayName }: { displayName: string }) {
             />
             <kbd>Ctrl K</kbd>
           </div>
+          <LanguageSwitch />
           <span className="top-private">
             <span />
-            Private
+            {t("Private")}
           </span>
         </header>
         <main>
           {loading ? (
             <div className="loading">
               <LoaderCircle className="spin" />
-              Opening your workspace…
+              {t("Opening your workspace…")}
             </div>
           ) : loadError ? (
-            <Empty icon={<FileText />} title="Let’s reconnect">
-              {loadError}
+            <Empty icon={<FileText />} title={t("Let’s reconnect")}>
+              {t(loadError)}
               <button
                 className="button primary"
                 onClick={() => {
@@ -764,7 +881,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                     .finally(() => setLoading(false));
                 }}
               >
-                Reload records
+                {t("Reload records")}
               </button>
             </Empty>
           ) : (
@@ -773,28 +890,28 @@ export default function Studio({ displayName }: { displayName: string }) {
                 <div className="sample-banner">
                   <span>
                     <span className="sample-dot" />
-                    Sample records are fictional. Explore freely.
+                    {t("Sample records are fictional. Explore freely.")}
                   </span>
                   <button onClick={() => open({ kind: "samplesRemove" })}>
-                    Remove samples <X size={13} />
+                    {t("Remove samples")} <X size={13} />
                   </button>
                 </div>
               )}
               {selected && !customer ? (
-                <Empty icon={<Users />} title="Customer not found">
-                  This record may no longer be available.
+                <Empty icon={<Users />} title={t("Customer not found")}>
+                  {t("This record may no longer be available.")}
                   <button
                     className="button secondary"
                     onClick={() => go("customers")}
                   >
-                    Back to customers
+                    {t("Back to customers")}
                   </button>
                 </Empty>
               ) : customer ? (
                 <>
                   <button className="back-link" onClick={() => go("customers")}>
                     <ArrowLeft size={15} />
-                    All customers
+                    {t("All customers")}
                   </button>
                   <div className="profile-heading">
                     <div className="row">
@@ -802,15 +919,15 @@ export default function Studio({ displayName }: { displayName: string }) {
                       <div>
                         <div className="row">
                           <h1>{name(customer)}</h1>
-                          {customer.demo && <Badge>Sample</Badge>}
+                          {customer.demo && <Badge>{t("Sample")}</Badge>}
                           {customer.archived && (
-                            <Badge tone="amber">Archived</Badge>
+                            <Badge tone="amber">{t("Archived")}</Badge>
                           )}
                         </div>
                         <p>
-                          Customer since {fmt(customer.createdAt)}{" "}
+                          {t("Customer since")} {fmt(customer.createdAt)}{" "}
                           <span className="dot-separator">·</span>{" "}
-                          {customer.address || "Location not recorded"}
+                          {customer.address || t("Location not recorded")}
                         </p>
                       </div>
                     </div>
@@ -819,7 +936,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                         className="button secondary"
                         onClick={() => open({ kind: "customer", customer })}
                       >
-                        Edit details
+                        {t("Edit details")}
                       </button>
                       {!customer.archived && (
                         <button
@@ -827,15 +944,15 @@ export default function Studio({ displayName }: { displayName: string }) {
                           onClick={() => open({ kind: "rx", customer })}
                         >
                           <Plus size={17} />
-                          Add prescription
+                          {t("Add prescription")}
                         </button>
                       )}
                       <button
                         className="icon-button bordered"
                         aria-label={
                           customer.archived
-                            ? "Restore customer"
-                            : "Archive customer"
+                            ? t("Restore customer")
+                            : t("Archive customer")
                         }
                         onClick={() => open({ kind: "archive", customer })}
                       >
@@ -850,28 +967,27 @@ export default function Studio({ displayName }: { displayName: string }) {
                   <div
                     className="tabs"
                     role="tablist"
-                    aria-label="Customer sections"
+                    aria-label={t("Customer sections")}
                   >
                     {(
                       [
                         "overview",
                         "prescriptions",
+                        "purchases",
                         "family",
                         "aftercare",
                         "activity",
                       ] as Tab[]
-                    ).map((t) => (
+                    ).map((section) => (
                       <button
                         role="tab"
-                        aria-selected={tab === t}
-                        className={tab === t ? "active" : ""}
-                        key={t}
-                        onClick={() => go("customers", customer.id, t)}
+                        aria-selected={tab === section}
+                        className={tab === section ? "active" : ""}
+                        key={section}
+                        onClick={() => go("customers", customer.id, section)}
                       >
-                        {t === "family"
-                          ? "Family connections"
-                          : t[0].toUpperCase() + t.slice(1)}
-                        {t === "prescriptions" && (
+                        {t(tabLabels[section])}
+                        {section === "prescriptions" && (
                           <span>
                             {
                               data.prescriptions.filter(
@@ -887,14 +1003,14 @@ export default function Studio({ displayName }: { displayName: string }) {
                     <div className="profile-layout">
                       <div className="profile-main">
                         <div className="section-title">
-                          <h2>Latest prescription</h2>
+                          <h2>{t("Latest prescription")}</h2>
                           <button
                             className="text-link"
                             onClick={() =>
                               go("customers", customer.id, "prescriptions")
                             }
                           >
-                            View history <ArrowRight size={15} />
+                            {t("View history")} <ArrowRight size={15} />
                           </button>
                         </div>
                         {latestRx(data, customer.id)[0] ? (
@@ -903,31 +1019,32 @@ export default function Studio({ displayName }: { displayName: string }) {
                           <div className="card">
                             <Empty
                               icon={<Glasses />}
-                              title="A clear starting point"
+                              title={t("A clear starting point")}
                             >
-                              Add the first prescription to begin this
-                              customer’s history.
+                              {t(
+                                "Add the first prescription to begin this customer’s history.",
+                              )}
                               {!customer.archived && (
                                 <button
                                   className="button secondary"
                                   onClick={() => open({ kind: "rx", customer })}
                                 >
                                   <Plus size={16} />
-                                  Add prescription
+                                  {t("Add prescription")}
                                 </button>
                               )}
                             </Empty>
                           </div>
                         )}
                         <div className="section-title">
-                          <h2>Recent aftercare</h2>
+                          <h2>{t("Recent aftercare")}</h2>
                           {!customer.archived && (
                             <button
                               className="text-link"
                               onClick={() => open({ kind: "care", customer })}
                             >
                               <Plus size={15} />
-                              Record visit
+                              {t("Record visit")}
                             </button>
                           )}
                         </div>
@@ -938,7 +1055,32 @@ export default function Studio({ displayName }: { displayName: string }) {
                               .map((a) => careCard(a))
                           ) : (
                             <div className="soft-empty">
-                              No aftercare visits recorded yet.
+                              {t("No aftercare visits recorded yet.")}
+                            </div>
+                          )}
+                        </section>
+                        <div className="section-title">
+                          <h2>{t("Recent purchases")}</h2>
+                          {!customer.archived && (
+                            <button
+                              className="text-link"
+                              onClick={() =>
+                                open({ kind: "purchase", customer })
+                              }
+                            >
+                              <Plus size={15} />
+                              {t("Register purchase")}
+                            </button>
+                          )}
+                        </div>
+                        <section className="card">
+                          {getPurchases(customer.id).length ? (
+                            getPurchases(customer.id)
+                              .slice(0, 3)
+                              .map((p) => purchaseCard(p))
+                          ) : (
+                            <div className="soft-empty">
+                              {t("No purchases recorded yet.")}
                             </div>
                           )}
                         </section>
@@ -946,10 +1088,10 @@ export default function Studio({ displayName }: { displayName: string }) {
                       <div className="profile-aside">
                         <section className="card contact-card">
                           <div className="card-title">
-                            <h3>Customer details</h3>
+                            <h3>{t("Customer details")}</h3>
                             <button
                               className="icon-button"
-                              aria-label="Edit customer details"
+                              aria-label={t("Edit customer details")}
                               onClick={() =>
                                 open({ kind: "customer", customer })
                               }
@@ -960,45 +1102,47 @@ export default function Studio({ displayName }: { displayName: string }) {
                           <div className="contact-line">
                             <Phone />
                             <div>
-                              <small>Phone number</small>
+                              <small>{t("Phone number")}</small>
                               {customer.phone ? (
                                 <a href={`tel:${customer.phone}`}>
                                   {customer.phone}
                                 </a>
                               ) : (
-                                <span>Not recorded</span>
+                                <span>{t("Not recorded")}</span>
                               )}
                             </div>
                           </div>
                           <div className="contact-line">
                             <Mail />
                             <div>
-                              <small>Email address</small>
+                              <small>{t("Email address")}</small>
                               {customer.email ? (
                                 <a href={`mailto:${customer.email}`}>
                                   {customer.email}
                                 </a>
                               ) : (
-                                <span>Not recorded</span>
+                                <span>{t("Not recorded")}</span>
                               )}
                             </div>
                           </div>
                           <div className="contact-line">
                             <CalendarDays />
                             <div>
-                              <small>Date of birth</small>
+                              <small>{t("Date of birth")}</small>
                               <span>
                                 {customer.dob
                                   ? fmt(customer.dob)
-                                  : "Not recorded"}
+                                  : t("Not recorded")}
                               </span>
                             </div>
                           </div>
                           <div className="contact-line">
                             <MapPin />
                             <div>
-                              <small>Address / city</small>
-                              <span>{customer.address || "Not recorded"}</span>
+                              <small>{t("Address / city")}</small>
+                              <span>
+                                {customer.address || t("Not recorded")}
+                              </span>
                             </div>
                           </div>
                           {customer.tags.length > 0 && (
@@ -1010,19 +1154,21 @@ export default function Studio({ displayName }: { displayName: string }) {
                           )}
                         </section>
                         <section className="card notes-card">
-                          <h3>A note to remember</h3>
+                          <h3>{t("A note to remember")}</h3>
                           <p className="preserve">
                             {customer.notes ||
-                              "Little details go a long way. Add preferences or useful context in customer details."}
+                              t(
+                                "Little details go a long way. Add preferences or useful context in customer details.",
+                              )}
                           </p>
                         </section>
                         <section className="card">
                           <div className="card-title">
-                            <h3>Family connections</h3>
+                            <h3>{t("Family connections")}</h3>
                             {!customer.archived && (
                               <button
                                 className="icon-button"
-                                aria-label="Link family member"
+                                aria-label={t("Link family member")}
                                 onClick={() =>
                                   open({ kind: "family", customer })
                                 }
@@ -1037,7 +1183,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                             )
                           ) : (
                             <p className="soft-empty">
-                              No family connections yet.
+                              {t("No family connections yet.")}
                             </p>
                           )}
                         </section>
@@ -1048,10 +1194,11 @@ export default function Studio({ displayName }: { displayName: string }) {
                     <>
                       <div className="section-title">
                         <div>
-                          <h2>Prescription history</h2>
+                          <h2>{t("Prescription history")}</h2>
                           <p>
-                            Original entries stay preserved when a correction is
-                            added.
+                            {t(
+                              "Original entries stay preserved when a correction is added.",
+                            )}
                           </p>
                         </div>
                         {compare.length === 2 && (
@@ -1060,7 +1207,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                             onClick={() => open({ kind: "compare", customer })}
                           >
                             <Copy size={16} />
-                            Compare selected
+                            {t("Compare selected")}
                           </button>
                         )}
                       </div>
@@ -1077,8 +1224,11 @@ export default function Studio({ displayName }: { displayName: string }) {
                       {!data.prescriptions.some(
                         (p) => p.customerId === customer.id,
                       ) && (
-                        <Empty icon={<Glasses />} title="No prescriptions yet">
-                          Add a dated prescription to start the history.
+                        <Empty
+                          icon={<Glasses />}
+                          title={t("No prescriptions yet")}
+                        >
+                          {t("Add a dated prescription to start the history.")}
                         </Empty>
                       )}
                     </>
@@ -1087,8 +1237,10 @@ export default function Studio({ displayName }: { displayName: string }) {
                     <section className="card">
                       <div className="card-title">
                         <div>
-                          <h2>Care runs in the family</h2>
-                          <p>Each family member keeps their own records.</p>
+                          <h2>{t("Care runs in the family")}</h2>
+                          <p>
+                            {t("Each family member keeps their own records.")}
+                          </p>
                         </div>
                         {!customer.archived && (
                           <button
@@ -1096,7 +1248,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                             onClick={() => open({ kind: "family", customer })}
                           >
                             <Link2 size={16} />
-                            Link family member
+                            {t("Link family member")}
                           </button>
                         )}
                       </div>
@@ -1105,9 +1257,13 @@ export default function Studio({ displayName }: { displayName: string }) {
                           familyCard(f, customer.id),
                         )
                       ) : (
-                        <Empty icon={<Network />} title="Make the connection">
-                          Link an existing customer as a relative or contact
-                          person.
+                        <Empty
+                          icon={<Network />}
+                          title={t("Make the connection")}
+                        >
+                          {t(
+                            "Link an existing customer as a relative or contact person.",
+                          )}
                         </Empty>
                       )}
                     </section>
@@ -1116,10 +1272,11 @@ export default function Studio({ displayName }: { displayName: string }) {
                     <section className="card journal">
                       <div className="card-title">
                         <div>
-                          <h2>Aftercare journal</h2>
+                          <h2>{t("Aftercare journal")}</h2>
                           <p>
-                            Adjustments, repairs, replacements and the details
-                            in between.
+                            {t(
+                              "Adjustments, repairs, replacements and the details in between.",
+                            )}
                           </p>
                         </div>
                         {!customer.archived && (
@@ -1128,7 +1285,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                             onClick={() => open({ kind: "care", customer })}
                           >
                             <Plus size={17} />
-                            Record visit
+                            {t("Record visit")}
                           </button>
                         )}
                       </div>
@@ -1137,9 +1294,42 @@ export default function Studio({ displayName }: { displayName: string }) {
                       ) : (
                         <Empty
                           icon={<HeartHandshake />}
-                          title="Every visit matters"
+                          title={t("Every visit matters")}
                         >
-                          Record a visit to build an aftercare history.
+                          {t("Record a visit to build an aftercare history.")}
+                        </Empty>
+                      )}
+                    </section>
+                  )}
+                  {tab === "purchases" && (
+                    <section className="card">
+                      <div className="card-title">
+                        <div>
+                          <h2>{t("Purchase history")}</h2>
+                          <p>
+                            {t(
+                              "Record what this customer has bought, whenever they visit.",
+                            )}
+                          </p>
+                        </div>
+                        {!customer.archived && (
+                          <button
+                            className="button primary"
+                            onClick={() => open({ kind: "purchase", customer })}
+                          >
+                            <Plus size={16} />
+                            {t("Register purchase")}
+                          </button>
+                        )}
+                      </div>
+                      {getPurchases(customer.id).length ? (
+                        getPurchases(customer.id).map((p) => purchaseCard(p))
+                      ) : (
+                        <Empty
+                          icon={<ShoppingBag />}
+                          title={t("No purchases yet")}
+                        >
+                          {t("No purchases recorded yet.")}
                         </Empty>
                       )}
                     </section>
@@ -1147,8 +1337,8 @@ export default function Studio({ displayName }: { displayName: string }) {
                   {tab === "activity" && (
                     <section className="card">
                       <div className="card-title">
-                        <h2>Record activity</h2>
-                        <Badge>Latest 500 workspace events</Badge>
+                        <h2>{t("Record activity")}</h2>
+                        <Badge>{t("Latest 500 workspace events")}</Badge>
                       </div>
                       {data.audit
                         .filter((a) => a.customerId === customer.id)
@@ -1158,7 +1348,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                               <Check size={15} />
                             </span>
                             <div>
-                              <b>{a.action}</b>
+                              <b>{t(a.action)}</b>
                               <small>{a.author}</small>
                             </div>
                             <small>
@@ -1174,7 +1364,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                         (a) => a.customerId === customer.id,
                       ) && (
                         <p className="soft-empty">
-                          New changes to this record will appear here.
+                          {t("New changes to this record will appear here.")}
                         </p>
                       )}
                     </section>
@@ -1185,10 +1375,10 @@ export default function Studio({ displayName }: { displayName: string }) {
                   <div className="page-heading">
                     <div>
                       <div className="eyebrow">
-                        OPTIKA NIMANI <span /> CUSTOMER STUDIO
+                        OPTIKA NIMANI <span /> {t("CUSTOMER STUDIO")}
                       </div>
-                      <h1>{headings[view][0]}</h1>
-                      <p>{headings[view][1]}</p>
+                      <h1>{t(headings[view][0])}</h1>
+                      <p>{t(headings[view][1])}</p>
                     </div>
                     {view === "customers" && (
                       <button
@@ -1196,7 +1386,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                         onClick={() => open({ kind: "customer" })}
                       >
                         <Plus size={18} />
-                        Add customer
+                        {t("Add customer")}
                       </button>
                     )}
                   </div>
@@ -1241,9 +1431,9 @@ export default function Studio({ displayName }: { displayName: string }) {
                           return (
                             <div className="stat-card" key={i}>
                               <div>
-                                <span>{String(label)}</span>
+                                <span>{t(String(label))}</span>
                                 <b>{String(count).padStart(2, "0")}</b>
-                                <small>{String(subtitle)}</small>
+                                <small>{t(String(subtitle))}</small>
                               </div>
                               <span className={`stat-icon tone-${i}`}>
                                 <I size={20} />
@@ -1255,19 +1445,21 @@ export default function Studio({ displayName }: { displayName: string }) {
                       <section className="card directory">
                         <div className="directory-head">
                           <div className="row">
-                            <h2>Customer directory</h2>
+                            <h2>{t("Customer directory")}</h2>
                             <Badge>{list.length}</Badge>
                           </div>
                           <div className="row">
                             <label className="sort-label">
                               <SlidersHorizontal size={14} />
                               <select
-                                aria-label="Sort customers"
+                                aria-label={t("Sort customers")}
                                 value={sort}
                                 onChange={(e) => setSort(e.target.value)}
                               >
-                                <option value="name">Name A–Z</option>
-                                <option value="recent">Recently updated</option>
+                                <option value="name">{t("Name A–Z")}</option>
+                                <option value="recent">
+                                  {t("Recently updated")}
+                                </option>
                               </select>
                             </label>
                             <button
@@ -1275,7 +1467,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                               onClick={exportData}
                             >
                               <Download size={15} />
-                              Export
+                              {t("Export")}
                             </button>
                           </div>
                         </div>
@@ -1292,14 +1484,14 @@ export default function Studio({ displayName }: { displayName: string }) {
                                 key={v}
                                 onClick={() => setFilter(v)}
                               >
-                                {l}
+                                {t(l)}
                               </button>
                             ))}
                           </div>
                           <span className="result-note">
                             {query
-                              ? `Results for “${query}”`
-                              : "A familiar face, a complete history."}
+                              ? t("Results for “{query}”", { query })
+                              : t("A familiar face, a complete history.")}
                           </span>
                         </div>
                         {list.length ? (
@@ -1308,11 +1500,11 @@ export default function Studio({ displayName }: { displayName: string }) {
                               <table className="customer-table">
                                 <thead>
                                   <tr>
-                                    <th>Customer</th>
-                                    <th>Contact</th>
-                                    <th>Latest prescription</th>
-                                    <th>Family</th>
-                                    <th>Added</th>
+                                    <th>{t("Customer")}</th>
+                                    <th>{t("Contact")}</th>
+                                    <th>{t("Latest prescription")}</th>
+                                    <th>{t("Family")}</th>
+                                    <th>{t("Added")}</th>
                                     <th />
                                   </tr>
                                 </thead>
@@ -1336,14 +1528,14 @@ export default function Studio({ displayName }: { displayName: string }) {
                                                   {name(c)}
                                                   {c.demo && (
                                                     <span className="sample-label">
-                                                      SAMPLE
+                                                      {t("SAMPLE")}
                                                     </span>
                                                   )}
                                                 </b>
                                                 <small>
                                                   {c.tags[0] ||
                                                     c.address ||
-                                                    "Customer record"}
+                                                    t("Customer record")}
                                                 </small>
                                               </span>
                                             </button>
@@ -1353,7 +1545,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                                             <small>
                                               {c.email ||
                                                 (!c.phone
-                                                  ? "See family contact"
+                                                  ? t("See family contact")
                                                   : "")}
                                             </small>
                                           </td>
@@ -1371,12 +1563,12 @@ export default function Studio({ displayName }: { displayName: string }) {
                                                         p.customerId === c.id,
                                                     ).length
                                                   }{" "}
-                                                  recorded
+                                                  {t("recorded")}
                                                 </small>
                                               </>
                                             ) : (
                                               <span className="muted">
-                                                Not recorded
+                                                {t("Not recorded")}
                                               </span>
                                             )}
                                           </td>
@@ -1384,7 +1576,8 @@ export default function Studio({ displayName }: { displayName: string }) {
                                             {getFamily(c.id).length ? (
                                               <span className="family-count">
                                                 <Network size={14} />
-                                                {getFamily(c.id).length} linked
+                                                {getFamily(c.id).length}{" "}
+                                                {t("linked")}
                                               </span>
                                             ) : (
                                               <span className="muted">—</span>
@@ -1396,7 +1589,9 @@ export default function Studio({ displayName }: { displayName: string }) {
                                           <td>
                                             <button
                                               className="icon-button"
-                                              aria-label={`Open ${name(c)}`}
+                                              aria-label={t("Open {name}", {
+                                                name: name(c),
+                                              })}
                                               onClick={() =>
                                                 go("customers", c.id)
                                               }
@@ -1412,23 +1607,25 @@ export default function Studio({ displayName }: { displayName: string }) {
                             </div>
                             <div className="table-footer">
                               <span>
-                                Showing {(page - 1) * 10 + 1}–
-                                {Math.min(page * 10, list.length)} of{" "}
-                                {list.length} customers
+                                {t("Showing")} {(page - 1) * 10 + 1}–
+                                {Math.min(page * 10, list.length)} {t("of")}{" "}
+                                {list.length} {t("customers")}
                               </span>
                               <div className="row">
                                 <button
                                   className="icon-button bordered"
-                                  aria-label="Previous page"
+                                  aria-label={t("Previous page")}
                                   disabled={page <= 1}
                                   onClick={() => setPage(page - 1)}
                                 >
                                   <ArrowLeft size={15} />
                                 </button>
-                                <span>Page {page}</span>
+                                <span>
+                                  {t("Page")} {page}
+                                </span>
                                 <button
                                   className="icon-button bordered"
-                                  aria-label="Next page"
+                                  aria-label={t("Next page")}
                                   disabled={page * 10 >= list.length}
                                   onClick={() => setPage(page + 1)}
                                 >
@@ -1438,8 +1635,13 @@ export default function Studio({ displayName }: { displayName: string }) {
                             </div>
                           </>
                         ) : data.customers.length ? (
-                          <Empty icon={<Search />} title="No customers found">
-                            Try a different name, phone number, or filter.
+                          <Empty
+                            icon={<Search />}
+                            title={t("No customers found")}
+                          >
+                            {t(
+                              "Try a different name, phone number, or filter.",
+                            )}
                           </Empty>
                         ) : (
                           <div className="welcome">
@@ -1448,13 +1650,16 @@ export default function Studio({ displayName }: { displayName: string }) {
                               <span className="art-orbit orbit-one" />
                               <span className="art-orbit orbit-two" />
                             </div>
-                            <div className="eyebrow">A FRESH PERSPECTIVE</div>
-                            <h2>Great care starts with a name.</h2>
+                            <div className="eyebrow">
+                              {t("A FRESH PERSPECTIVE")}
+                            </div>
+                            <h2>{t("Great care starts with a name.")}</h2>
                             <p>
-                              Add your first customer to keep their
-                              prescriptions,
+                              {t(
+                                "Add your first customer to keep their prescriptions,",
+                              )}
                               <br />
-                              family connections, and aftercare together.
+                              {t("family connections, and aftercare together.")}
                             </p>
                             <div className="row">
                               <button
@@ -1462,7 +1667,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                                 onClick={() => open({ kind: "customer" })}
                               >
                                 <Plus size={17} />
-                                Add your first customer
+                                {t("Add your first customer")}
                               </button>
                               <button
                                 className="button secondary"
@@ -1480,12 +1685,13 @@ export default function Studio({ displayName }: { displayName: string }) {
                                 ) : (
                                   <ArrowUpRight size={16} />
                                 )}
-                                Explore sample records
+                                {t("Explore sample records")}
                               </button>
                             </div>
                             <small>
-                              Samples are fictional and can be removed from
-                              workspace settings.
+                              {t(
+                                "Samples are fictional and can be removed from workspace settings.",
+                              )}
                             </small>
                           </div>
                         )}
@@ -1493,10 +1699,10 @@ export default function Studio({ displayName }: { displayName: string }) {
                       <div className="bottom-note">
                         <ShieldCheck size={15} />
                         <span>
-                          A private space for thoughtful customer care.
+                          {t("A private space for thoughtful customer care.")}
                         </span>
                         <span className="bottom-brand">
-                          Made for Optika Nimani
+                          {t("Made for Optika Nimani")}
                         </span>
                       </div>
                     </>
@@ -1504,18 +1710,20 @@ export default function Studio({ displayName }: { displayName: string }) {
                   {view === "prescriptions" && (
                     <section className="card">
                       <div className="card-title">
-                        <h2>All prescriptions</h2>
-                        <Badge>{data.prescriptions.length} entries</Badge>
+                        <h2>{t("All prescriptions")}</h2>
+                        <Badge>
+                          {data.prescriptions.length} {t("entries")}
+                        </Badge>
                       </div>
                       {data.prescriptions.length ? (
                         <div className="table-scroll">
                           <table className="customer-table">
                             <thead>
                               <tr>
-                                <th>Customer</th>
-                                <th>Prescription date</th>
-                                <th>Prescriber</th>
-                                <th>Status</th>
+                                <th>{t("Customer")}</th>
+                                <th>{t("Prescription date")}</th>
+                                <th>{t("Prescriber")}</th>
+                                <th>{t("Status")}</th>
                                 <th />
                               </tr>
                             </thead>
@@ -1557,16 +1765,22 @@ export default function Studio({ displayName }: { displayName: string }) {
                                         {data.prescriptions.some(
                                           (r) => r.supersedesId === p.id,
                                         )
-                                          ? "Corrected"
+                                          ? t("Corrected")
                                           : p.supersedesId
-                                            ? "Revision"
-                                            : "Recorded"}
+                                            ? t("Revision")
+                                            : t("Recorded")}
                                       </Badge>
                                     </td>
                                     <td>
                                       <button
                                         className="icon-button"
-                                        aria-label={`View ${name(getC(p.customerId))} prescription ${fmt(p.date)}`}
+                                        aria-label={t(
+                                          "View {name} prescription {date}",
+                                          {
+                                            name: name(getC(p.customerId)),
+                                            date: fmt(p.date),
+                                          },
+                                        )}
                                         onClick={() =>
                                           open({
                                             kind: "viewRx",
@@ -1584,14 +1798,18 @@ export default function Studio({ displayName }: { displayName: string }) {
                           </table>
                         </div>
                       ) : (
-                        <Empty icon={<Glasses />} title="A history starts here">
-                          Open a customer profile to add their first
-                          prescription.
+                        <Empty
+                          icon={<Glasses />}
+                          title={t("A history starts here")}
+                        >
+                          {t(
+                            "Open a customer profile to add their first prescription.",
+                          )}
                           <button
                             className="button secondary"
                             onClick={() => go("customers")}
                           >
-                            Go to customers <ArrowRight size={15} />
+                            {t("Go to customers")} <ArrowRight size={15} />
                           </button>
                         </Empty>
                       )}
@@ -1604,10 +1822,10 @@ export default function Studio({ displayName }: { displayName: string }) {
                           <section className="card family-pair" key={f.id}>
                             <div className="family-pair-top">
                               <Network size={18} />
-                              <span>FAMILY CONNECTION</span>
+                              <span>{t("FAMILY CONNECTION")}</span>
                               {f.contact && (
                                 <Badge tone="green">
-                                  Contact person linked
+                                  {t("Contact person linked")}
                                 </Badge>
                               )}
                             </div>
@@ -1636,8 +1854,16 @@ export default function Studio({ displayName }: { displayName: string }) {
                             </div>
                             <p>
                               {f.contact
-                                ? `${name(getC(f.relativeId))} is a contact person for ${name(getC(f.customerId))}.`
-                                : "Separate customer records, connected for better care."}
+                                ? t(
+                                    "{contact} is a contact person for {customer}.",
+                                    {
+                                      contact: name(getC(f.relativeId)),
+                                      customer: name(getC(f.customerId)),
+                                    },
+                                  )
+                                : t(
+                                    "Separate customer records, connected for better care.",
+                                  )}
                             </p>
                           </section>
                         ))
@@ -1645,15 +1871,16 @@ export default function Studio({ displayName }: { displayName: string }) {
                         <section className="card full-width">
                           <Empty
                             icon={<Network />}
-                            title="Keep families connected"
+                            title={t("Keep families connected")}
                           >
-                            Open a customer’s Family connections tab to link a
-                            relative.
+                            {t(
+                              "Open a customer’s Family connections tab to link a relative.",
+                            )}
                             <button
                               className="button secondary"
                               onClick={() => go("customers")}
                             >
-                              Go to customers <ArrowRight size={15} />
+                              {t("Go to customers")} <ArrowRight size={15} />
                             </button>
                           </Empty>
                         </section>
@@ -1663,8 +1890,10 @@ export default function Studio({ displayName }: { displayName: string }) {
                   {view === "aftercare" && (
                     <section className="card journal">
                       <div className="card-title">
-                        <h2>The latest care</h2>
-                        <Badge>{data.aftercare.length} visits</Badge>
+                        <h2>{t("The latest care")}</h2>
+                        <Badge>
+                          {data.aftercare.length} {t("visits")}
+                        </Badge>
                       </div>
                       {data.aftercare.length ? (
                         [...data.aftercare]
@@ -1677,14 +1906,48 @@ export default function Studio({ displayName }: { displayName: string }) {
                       ) : (
                         <Empty
                           icon={<HeartHandshake />}
-                          title="Remember every little adjustment"
+                          title={t("Remember every little adjustment")}
                         >
-                          Open a customer profile to record an aftercare visit.
+                          {t(
+                            "Open a customer profile to record an aftercare visit.",
+                          )}
                           <button
                             className="button secondary"
                             onClick={() => go("customers")}
                           >
-                            Go to customers <ArrowRight size={15} />
+                            {t("Go to customers")} <ArrowRight size={15} />
+                          </button>
+                        </Empty>
+                      )}
+                    </section>
+                  )}
+                  {view === "purchases" && (
+                    <section className="card">
+                      <div className="card-title">
+                        <h2>{t("All purchases")}</h2>
+                        <Badge>
+                          {data.purchases.length} {t("entries")}
+                        </Badge>
+                      </div>
+                      {data.purchases.length ? (
+                        [...data.purchases]
+                          .sort(
+                            (a, b) =>
+                              b.date.localeCompare(a.date) ||
+                              b.createdAt.localeCompare(a.createdAt),
+                          )
+                          .map((p) => purchaseCard(p, true))
+                      ) : (
+                        <Empty
+                          icon={<ShoppingBag />}
+                          title={t("No purchases yet")}
+                        >
+                          {t("Open a customer profile to register a purchase.")}
+                          <button
+                            className="button secondary"
+                            onClick={() => go("customers")}
+                          >
+                            {t("Go to customers")} <ArrowRight size={15} />
                           </button>
                         </Empty>
                       )}
@@ -1694,74 +1957,76 @@ export default function Studio({ displayName }: { displayName: string }) {
                     <div className="settings-grid">
                       <section className="card">
                         <div className="card-title">
-                          <h2>Your workspace</h2>
+                          <h2>{t("Your workspace")}</h2>
                           <ShieldCheck size={20} />
                         </div>
                         <div className="settings-body">
-                          <p>Optika Nimani’s private customer studio.</p>
+                          <p>{t("Optika Nimani’s private customer studio.")}</p>
                           <dl>
-                            <dt>Signed in as</dt>
+                            <dt>{t("Signed in as")}</dt>
                             <dd>{displayName}</dd>
-                            <dt>Record access</dt>
-                            <dd>This account’s private records</dd>
-                            <dt>Storage</dt>
-                            <dd>Managed SQLite database & file storage</dd>
+                            <dt>{t("Record access")}</dt>
+                            <dd>{t("This account’s private records")}</dd>
+                            <dt>{t("Storage")}</dt>
+                            <dd>{t("Records saved across devices")}</dd>
                           </dl>
                           <a
                             className="button secondary"
                             href="/signout-with-chatgpt?return_to=%2F"
                             target="_top"
                           >
-                            Sign out <ArrowUpRight size={15} />
+                            {t("Sign out")} <ArrowUpRight size={15} />
                           </a>
                         </div>
                       </section>
                       <section className="card">
                         <div className="card-title">
-                          <h2>Export your records</h2>
+                          <h2>{t("Export your records")}</h2>
                           <Download size={20} />
                         </div>
                         <div className="settings-body">
                           <p>
-                            Download customer details, prescriptions, family
-                            links, aftercare and recent activity as JSON.
+                            {t(
+                              "Download customer details, prescriptions, purchases, family links, aftercare and recent activity as JSON.",
+                            )}
                           </p>
                           <p className="muted">
-                            Attachment metadata is included. Download the
-                            original files from each prescription. This export
-                            is not a complete file backup.
+                            {t(
+                              "Attachment metadata is included. Download the original files from each prescription. This export is not a complete file backup.",
+                            )}
                           </p>
                           <button
                             className="button secondary"
                             onClick={exportData}
                           >
                             <Download size={16} />
-                            Export records
+                            {t("Export records")}
                           </button>
                         </div>
                       </section>
                       <section className="card">
                         <div className="card-title">
-                          <h2>Sample records</h2>
+                          <h2>{t("Sample records")}</h2>
                           <Glasses size={20} />
                         </div>
                         <div className="settings-body">
                           <p>
-                            Explore the studio with clearly marked fictional
-                            customers, prescriptions, relatives and aftercare
-                            visits.
+                            {t(
+                              "Explore the studio with clearly marked fictional customers, prescriptions, relatives and aftercare visits.",
+                            )}
                           </p>
                           {hasSamples ? (
                             <>
                               <p className="muted">
-                                Removing samples also removes records and files
-                                added to those sample customers.
+                                {t(
+                                  "Removing samples also removes records and files added to those sample customers.",
+                                )}
                               </p>
                               <button
                                 className="button secondary danger-text"
                                 onClick={() => open({ kind: "samplesRemove" })}
                               >
-                                Remove sample records
+                                {t("Remove sample records")}
                               </button>
                             </>
                           ) : (
@@ -1772,24 +2037,26 @@ export default function Studio({ displayName }: { displayName: string }) {
                                 act("sample", {}, "Sample records added")
                               }
                             >
-                              Load fictional samples
+                              {t("Load fictional samples")}
                             </button>
                           )}
                           {data.customers.length > 0 && !hasSamples && (
-                            <small>Available only in an empty workspace.</small>
+                            <small>
+                              {t("Available only in an empty workspace.")}
+                            </small>
                           )}
                         </div>
                       </section>
                       <section className="card notes-card">
                         <div className="settings-body">
                           <div className="eyebrow">
-                            BUILT AROUND CUSTOMER CARE
+                            {t("BUILT AROUND CUSTOMER CARE")}
                           </div>
-                          <h2>A place for the whole story.</h2>
+                          <h2>{t("A place for the whole story.")}</h2>
                           <p>
-                            Keep prescriptions, family connections and aftercare
-                            together. Shopify continues to handle the store’s
-                            orders.
+                            {t(
+                              "Keep prescriptions, purchases, family connections and aftercare together. Shopify continues to handle the store’s orders.",
+                            )}
                           </p>
                         </div>
                       </section>
@@ -1801,10 +2068,10 @@ export default function Studio({ displayName }: { displayName: string }) {
           )}
           {error && !modal && (
             <div className="inline-error" role="alert">
-              {error}
+              {t(error)}
               <button
                 className="icon-button"
-                aria-label="Dismiss error"
+                aria-label={t("Dismiss error")}
                 onClick={() => setError("")}
               >
                 <X size={16} />
@@ -1817,42 +2084,46 @@ export default function Studio({ displayName }: { displayName: string }) {
         <Dialog
           wide={["rx", "viewRx", "compare"].includes(modal.kind)}
           title={
-            modal.kind === "customer"
-              ? modal.customer
-                ? "Edit customer details"
-                : "A new familiar face"
-              : modal.kind === "rx"
-                ? modal.rx
-                  ? "Correct prescription"
-                  : "Add prescription"
-                : modal.kind === "family"
-                  ? "Connect a family member"
-                  : modal.kind === "care"
-                    ? "Record an aftercare visit"
-                    : modal.kind === "viewRx"
-                      ? "Prescription record"
-                      : modal.kind === "compare"
-                        ? "Compare prescriptions"
-                        : modal.kind === "archive"
-                          ? modal.customer?.archived
-                            ? "Restore customer?"
-                            : "Archive customer?"
-                          : modal.kind === "unlink"
-                            ? "Remove family connection?"
-                            : "Remove fictional samples?"
+            modal.kind === "purchase"
+              ? modal.purchase
+                ? t("Edit purchase")
+                : t("Register purchase")
+              : modal.kind === "customer"
+                ? modal.customer
+                  ? t("Edit customer details")
+                  : t("A new familiar face")
+                : modal.kind === "rx"
+                  ? modal.rx
+                    ? t("Correct prescription")
+                    : t("Add prescription")
+                  : modal.kind === "family"
+                    ? t("Connect a family member")
+                    : modal.kind === "care"
+                      ? t("Record an aftercare visit")
+                      : modal.kind === "viewRx"
+                        ? t("Prescription record")
+                        : modal.kind === "compare"
+                          ? t("Compare prescriptions")
+                          : modal.kind === "archive"
+                            ? modal.customer?.archived
+                              ? t("Restore customer?")
+                              : t("Archive customer?")
+                            : modal.kind === "unlink"
+                              ? t("Remove family connection?")
+                              : t("Remove fictional samples?")
           }
           subtitle={
             modal.customer
               ? name(modal.customer)
               : modal.kind === "customer"
-                ? "Start with the basics. The rest can come later."
+                ? t("Start with the basics. The rest can come later.")
                 : undefined
           }
           onClose={close}
         >
           {error && (
             <div className="inline-error" role="alert">
-              {error}
+              {t(error)}
             </div>
           )}
           {modal.kind === "customer" && (
@@ -1920,6 +2191,34 @@ export default function Studio({ displayName }: { displayName: string }) {
               }
             />
           )}
+          {modal.kind === "purchase" && modal.customer && (
+            <PurchaseForm
+              purchase={modal.purchase}
+              prescriptions={data.prescriptions.filter(
+                (p) => p.customerId === modal.customer!.id,
+              )}
+              busy={busy}
+              onCancel={close}
+              onSave={(p) =>
+                act(
+                  modal.purchase ? "purchase.update" : "purchase.create",
+                  {
+                    customerId: modal.customer!.id,
+                    data: {
+                      ...p,
+                      ...(modal.purchase
+                        ? {
+                            id: modal.purchase.id,
+                            version: modal.purchase.version,
+                          }
+                        : {}),
+                    },
+                  },
+                  modal.purchase ? "Purchase updated" : "Purchase recorded",
+                )
+              }
+            />
+          )}
           {modal.kind === "care" && modal.customer && (
             <CareForm
               busy={busy}
@@ -1938,7 +2237,7 @@ export default function Studio({ displayName }: { displayName: string }) {
               <div className="rx-view print-record">
                 <div className="print-brand">
                   <Logo />
-                  <h2>Prescription record · Raport për syza</h2>
+                  <h2>{t("Prescription record · Raport për syza")}</h2>
                   <p>
                     {name(modal.customer)}
                     {modal.customer?.dob ? ` · ${fmt(modal.customer.dob)}` : ""}
@@ -1946,19 +2245,19 @@ export default function Studio({ displayName }: { displayName: string }) {
                 </div>
                 <div className="rx-metadata">
                   <div>
-                    <small>Prescription date</small>
+                    <small>{t("Prescription date")}</small>
                     <b>{fmt(modal.rx.date)}</b>
                   </div>
                   <div>
-                    <small>Prescriber</small>
-                    <b>{modal.rx.doctor || "Not recorded"}</b>
+                    <small>{t("Prescriber")}</small>
+                    <b>{modal.rx.doctor || t("Not recorded")}</b>
                   </div>
                   <div>
-                    <small>PD notation</small>
+                    <small>{t("PD notation")}</small>
                     <b>
                       {modal.rx.pdMode === "binocular"
-                        ? "Binocular (combined)"
-                        : "Monocular (per eye)"}
+                        ? t("Binocular (combined)")
+                        : t("Monocular (per eye)")}
                     </b>
                   </div>
                 </div>
@@ -1966,29 +2265,31 @@ export default function Studio({ displayName }: { displayName: string }) {
                   (p) => p.supersedesId === modal.rx!.id,
                 ) && (
                   <div className="notice amber">
-                    This entry has been corrected. The original is retained for
-                    history.
+                    {t(
+                      "This entry has been corrected. The original is retained for history.",
+                    )}
                   </div>
                 )}
                 {modal.rx.supersedesId && (
                   <div className="notice">
-                    Correction reason: {modal.rx.correctionReason}
+                    {t("Correction reason:")} {modal.rx.correctionReason}
                   </div>
                 )}
                 <GridTable rx={modal.rx} />
                 {modal.rx.notes && (
                   <div className="record-notes">
-                    <small>Notes</small>
+                    <small>{t("Notes")}</small>
                     <p className="preserve">{modal.rx.notes}</p>
                   </div>
                 )}
                 <p className="record-author">
-                  Recorded by {modal.rx.author} · {fmt(modal.rx.createdAt)}
+                  {t("Recorded by")} {modal.rx.author} ·{" "}
+                  {fmt(modal.rx.createdAt)}
                 </p>
                 <div className="attachments">
                   <h3>
                     <Paperclip size={16} />
-                    Original documents
+                    {t("Original documents")}
                   </h3>
                   {data.attachments
                     .filter((a) => a.prescriptionId === modal.rx!.id)
@@ -2009,15 +2310,19 @@ export default function Studio({ displayName }: { displayName: string }) {
                     ))}
                   {!data.attachments.some(
                     (a) => a.prescriptionId === modal.rx!.id,
-                  ) && <p className="muted">No original documents attached.</p>}
+                  ) && (
+                    <p className="muted">
+                      {t("No original documents attached.")}
+                    </p>
+                  )}
                   {!modal.customer?.archived && (
                     <label
                       className={`button secondary upload-button ${busy ? "disabled" : ""}`}
                     >
                       <Paperclip size={15} />
-                      {busy ? "Uploading…" : "Attach scan or photo"}
+                      {busy ? t("Uploading…") : t("Attach scan or photo")}
                       <input
-                        aria-label="Attach scan or photo"
+                        aria-label={t("Attach scan or photo")}
                         type="file"
                         accept="image/jpeg,image/png,application/pdf"
                         disabled={busy}
@@ -2057,7 +2362,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                       />
                     </label>
                   )}
-                  <small>JPG, PNG or PDF · up to 8 MB each</small>
+                  <small>{t("JPG, PNG or PDF · up to 8 MB each")}</small>
                 </div>
               </div>
               <div className="dialog-actions">
@@ -2066,7 +2371,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                   onClick={() => window.print()}
                 >
                   <Printer size={16} />
-                  Print record
+                  {t("Print record")}
                 </button>
                 {!modal.customer?.archived &&
                   !data.prescriptions.some(
@@ -2082,7 +2387,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                         })
                       }
                     >
-                      Add correction <ArrowRight size={16} />
+                      {t("Add correction")} <ArrowRight size={16} />
                     </button>
                   )}
               </div>
@@ -2095,19 +2400,20 @@ export default function Studio({ displayName }: { displayName: string }) {
                 return p ? (
                   <div key={id}>
                     <h3>{fmt(p.date)}</h3>
-                    <p>{p.doctor || "Prescriber not recorded"}</p>
+                    <p>{p.doctor || t("Prescriber not recorded")}</p>
                     <GridTable rx={p} />
                     <small>
                       {p.pdMode === "binocular"
-                        ? "Binocular PD"
-                        : "Monocular PD"}
+                        ? t("Binocular PD")
+                        : t("Monocular PD")}
                     </small>
                   </div>
                 ) : null;
               })}
               <p className="muted full-width">
-                Values are shown as recorded. No clinical interpretation or
-                conversion is applied.
+                {t(
+                  "Values are shown as recorded. No clinical interpretation or conversion is applied.",
+                )}
               </p>
             </div>
           )}
@@ -2116,11 +2422,19 @@ export default function Studio({ displayName }: { displayName: string }) {
               <p>
                 {modal.kind === "archive"
                   ? modal.customer?.archived
-                    ? "This customer will return to the active directory with their history intact."
-                    : "This customer will move to the archived directory. Their prescriptions, family links and aftercare will be preserved."
+                    ? t(
+                        "This customer will return to the active directory with their history intact.",
+                      )
+                    : t(
+                        "This customer will move to the archived directory. Their prescriptions, family links and aftercare will be preserved.",
+                      )
                   : modal.kind === "unlink"
-                    ? "Both customer profiles and their individual histories will stay intact. Only this family connection will be removed."
-                    : "This will remove all sample customers and any prescriptions, files, aftercare or family links added to them. Your other customers will stay in the workspace."}
+                    ? t(
+                        "Both customer profiles and their individual histories will stay intact. Only this family connection will be removed.",
+                      )
+                    : t(
+                        "This will remove all sample customers and any prescriptions, files, aftercare or family links added to them. Your other customers will stay in the workspace.",
+                      )}
               </p>
               <div className="dialog-actions">
                 <button
@@ -2128,7 +2442,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                   disabled={busy}
                   onClick={close}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
                 <button
                   className="button primary"
@@ -2167,11 +2481,11 @@ export default function Studio({ displayName }: { displayName: string }) {
                   {busy ? <LoaderCircle className="spin" size={16} /> : null}
                   {modal.kind === "archive"
                     ? modal.customer?.archived
-                      ? "Restore customer"
-                      : "Archive customer"
+                      ? t("Restore customer")
+                      : t("Archive customer")
                     : modal.kind === "unlink"
-                      ? "Remove connection"
-                      : "Remove samples"}
+                      ? t("Remove connection")
+                      : t("Remove samples")}
                 </button>
               </div>
             </div>
@@ -2181,11 +2495,11 @@ export default function Studio({ displayName }: { displayName: string }) {
       {toast && (
         <div className="toast" role="status">
           <CheckCircle2 size={18} />
-          {toast}
+          {t(toast)}
           <button
             className="icon-button"
             onClick={() => setToast("")}
-            aria-label="Dismiss notification"
+            aria-label={t("Dismiss notification")}
           >
             <X size={15} />
           </button>
@@ -2206,6 +2520,8 @@ function FormActions({
   label?: string;
   disabled?: boolean;
 }) {
+  const { t } = useLocale();
+
   return (
     <div className="dialog-actions">
       <button
@@ -2214,7 +2530,7 @@ function FormActions({
         disabled={busy}
         onClick={onCancel}
       >
-        Cancel
+        {t("Cancel")}
       </button>
       <button
         className="button primary"
@@ -2226,7 +2542,7 @@ function FormActions({
         ) : (
           <Check size={16} />
         )}{" "}
-        {busy ? "Saving…" : label}
+        {busy ? t("Saving…") : t(label)}
       </button>
     </div>
   );
@@ -2244,6 +2560,8 @@ function CustomerForm({
   onSave: (c: CustomerInput) => Promise<unknown>;
   onCancel: () => void;
 }) {
+  const { t } = useLocale();
+
   const [c, setC] = useState<CustomerInput>(
       customer ? { ...customer } : emptyCustomer,
     ),
@@ -2283,11 +2601,11 @@ function CustomerForm({
       <div className="form-body">
         {err && (
           <div role="alert" className="inline-error">
-            {err}
+            {t(err)}
           </div>
         )}
         <div className="form-grid">
-          <Field label="First name *">
+          <Field label={t("First name *")}>
             <input
               autoFocus
               required
@@ -2295,20 +2613,20 @@ function CustomerForm({
               autoComplete="given-name"
               value={c.firstName}
               onChange={(e) => set("firstName", e.target.value)}
-              placeholder="e.g. Arta"
+              placeholder={t("e.g. Arta")}
             />
           </Field>
-          <Field label="Last name *">
+          <Field label={t("Last name *")}>
             <input
               required
               maxLength={80}
               autoComplete="family-name"
               value={c.lastName}
               onChange={(e) => set("lastName", e.target.value)}
-              placeholder="e.g. Krasniqi"
+              placeholder={t("e.g. Krasniqi")}
             />
           </Field>
-          <Field label="Phone number">
+          <Field label={t("Phone number")}>
             <input
               type="tel"
               maxLength={40}
@@ -2318,7 +2636,7 @@ function CustomerForm({
               placeholder="+383 …"
             />
           </Field>
-          <Field label="Email address">
+          <Field label={t("Email address")}>
             <input
               type="email"
               autoComplete="email"
@@ -2327,7 +2645,7 @@ function CustomerForm({
               placeholder="name@example.com"
             />
           </Field>
-          <Field label="Date of birth">
+          <Field label={t("Date of birth")}>
             <input
               type="date"
               max={today()}
@@ -2335,50 +2653,53 @@ function CustomerForm({
               onChange={(e) => set("dob", e.target.value)}
             />
           </Field>
-          <Field label="Address / city">
+          <Field label={t("Address / city")}>
             <input
               maxLength={300}
               autoComplete="street-address"
               value={c.address}
               onChange={(e) => set("address", e.target.value)}
-              placeholder="e.g. Prishtina"
+              placeholder={t("e.g. Prishtina")}
             />
           </Field>
         </div>
         {duplicate && (
           <div className="notice amber">
-            Possible existing customer: <b>{name(duplicate)}</b>. Family members
-            may share a phone number; check before creating another record.
+            {t("Possible existing customer:")} <b>{name(duplicate)}</b>
+            {t(
+              ". Family members may share a phone number; check before creating another record.",
+            )}
           </div>
         )}
         <Field
-          label="Preferences / tags"
-          hint="Separate tags with commas. Up to 8 tags."
+          label={t("Preferences / tags")}
+          hint={t("Separate tags with commas. Up to 8 tags.")}
         >
           <input
             value={tags}
             onChange={(e) => setTags(e.target.value)}
-            placeholder="Lightweight frames, phone preferred"
+            placeholder={t("Lightweight frames, phone preferred")}
           />
         </Field>
-        <Field label="Customer notes">
+        <Field label={t("Customer notes")}>
           <textarea
             rows={3}
             maxLength={5000}
             value={c.notes}
             onChange={(e) => set("notes", e.target.value)}
-            placeholder="The small details worth remembering…"
+            placeholder={t("The small details worth remembering…")}
           />
         </Field>
         <small className="muted">
-          Contact information is optional, including for children with a family
-          contact.
+          {t(
+            "Contact information is optional, including for children with a family contact.",
+          )}
         </small>
       </div>
       <FormActions
         busy={busy}
         onCancel={onCancel}
-        label={customer ? "Save changes" : "Register customer"}
+        label={customer ? t("Save changes") : t("Register customer")}
       />
     </form>
   );
@@ -2394,6 +2715,8 @@ function RxForm({
   onSave: (r: RxInput) => Promise<unknown>;
   onCancel: () => void;
 }) {
+  const { t, language } = useLocale();
+
   const [r, setR] = useState<RxInput>(
     rx
       ? {
@@ -2445,17 +2768,18 @@ function RxForm({
       <div className="form-body">
         {err && (
           <div className="inline-error" role="alert">
-            {err}
+            {t(err)}
           </div>
         )}
         {rx && (
           <div className="notice">
-            You’re adding a correction. The original entry will stay in the
-            history.
+            {t(
+              "You’re adding a correction. The original entry will stay in the history.",
+            )}
           </div>
         )}
         <div className="form-grid">
-          <Field label="Prescription date *">
+          <Field label={t("Prescription date *")}>
             <input
               type="date"
               required
@@ -2464,18 +2788,18 @@ function RxForm({
               onChange={(e) => setR({ ...r, date: e.target.value })}
             />
           </Field>
-          <Field label="Prescriber / doctor">
+          <Field label={t("Prescriber / doctor")}>
             <input
               maxLength={150}
-              placeholder="As written on the prescription"
+              placeholder={t("As written on the prescription")}
               value={r.doctor}
               onChange={(e) => setR({ ...r, doctor: e.target.value })}
             />
           </Field>
         </div>
         <div className="rx-form-caption">
-          <h3>Prescription measurements</h3>
-          <Field label="PD notation">
+          <h3>{t("Prescription measurements")}</h3>
+          <Field label={t("PD notation")}>
             <select
               value={r.pdMode}
               onChange={(e) => {
@@ -2486,7 +2810,9 @@ function RxForm({
                 if (
                   hasValues &&
                   !window.confirm(
-                    "Switching PD notation will clear PD values. Re-enter them using the selected notation.",
+                    t(
+                      "Switching PD notation will clear PD values. Re-enter them using the selected notation.",
+                    ),
                   )
                 )
                   return;
@@ -2499,8 +2825,8 @@ function RxForm({
                 setR({ ...r, pdMode: mode, grid });
               }}
             >
-              <option value="binocular">Binocular · combined PD</option>
-              <option value="monocular">Monocular · per-eye PD</option>
+              <option value="binocular">{t("Binocular · combined PD")}</option>
+              <option value="monocular">{t("Monocular · per-eye PD")}</option>
             </select>
           </Field>
         </div>
@@ -2508,11 +2834,11 @@ function RxForm({
           <table className="rx-grid editable">
             <thead>
               <tr>
-                <th>Purpose</th>
-                <th>Eye</th>
+                <th>{t("Purpose")}</th>
+                <th>{t("Eye")}</th>
                 <th>SPH</th>
                 <th>CYL</th>
-                <th>AXIS</th>
+                <th>{t("AXIS")}</th>
                 <th>
                   PD <small>mm</small>
                 </th>
@@ -2524,18 +2850,18 @@ function RxForm({
                   <tr key={key + eye} className={i === 0 ? "group-start" : ""}>
                     {i === 0 && (
                       <th rowSpan={2}>
-                        {label}
-                        <small>{al}</small>
+                        {t(label)}
+                        <small>{language === "sq" ? label : al}</small>
                       </th>
                     )}
                     <td>
                       <b>{eye.toUpperCase()}</b>
-                      <small>{eye === "od" ? "Right" : "Left"}</small>
+                      <small>{eye === "od" ? t("Right") : t("Left")}</small>
                     </td>
                     {(["sph", "cyl", "axis"] as const).map((field) => (
                       <td key={field}>
                         <input
-                          aria-label={`${label} ${eye.toUpperCase()} ${field.toUpperCase()}`}
+                          aria-label={`${t(label)} ${eye.toUpperCase()} ${field.toUpperCase()}`}
                           inputMode={field === "axis" ? "numeric" : "text"}
                           maxLength={12}
                           placeholder="—"
@@ -2554,7 +2880,7 @@ function RxForm({
                     {r.pdMode === "monocular" ? (
                       <td>
                         <input
-                          aria-label={`${label} ${eye.toUpperCase()} PD`}
+                          aria-label={`${t(label)} ${eye.toUpperCase()} PD`}
                           inputMode="decimal"
                           placeholder="—"
                           value={r.grid[key][eye as "od" | "os"].pd}
@@ -2571,7 +2897,7 @@ function RxForm({
                     ) : i === 0 ? (
                       <td rowSpan={2}>
                         <input
-                          aria-label={`${label} combined PD`}
+                          aria-label={`${t(label)} ${t("combined PD")}`}
                           inputMode="decimal"
                           placeholder="—"
                           value={r.grid[key].pd}
@@ -2588,39 +2914,40 @@ function RxForm({
           </table>
         </div>
         <div className="grid-help">
-          <span>OD = right eye · OS = left eye</span>
-          <span>Blank fields stay blank. No values are calculated.</span>
+          <span>{t("OD = right eye · OS = left eye")}</span>
+          <span>{t("Blank fields stay blank. No values are calculated.")}</span>
         </div>
         {rx && (
-          <Field label="Reason for correction *">
+          <Field label={t("Reason for correction *")}>
             <textarea
               required
               rows={2}
               maxLength={2000}
               value={r.correctionReason}
               onChange={(e) => setR({ ...r, correctionReason: e.target.value })}
-              placeholder="Explain what changed and why"
+              placeholder={t("Explain what changed and why")}
             />
           </Field>
         )}
-        <Field label="Prescription notes">
+        <Field label={t("Prescription notes")}>
           <textarea
             rows={2}
             maxLength={5000}
-            placeholder="Additional instructions exactly as recorded…"
+            placeholder={t("Additional instructions exactly as recorded…")}
             value={r.notes}
             onChange={(e) => setR({ ...r, notes: e.target.value })}
           />
         </Field>
         <small className="muted">
-          You can attach the original photo or scan after saving this
-          prescription.
+          {t(
+            "You can attach the original photo or scan after saving this prescription.",
+          )}
         </small>
       </div>
       <FormActions
         busy={busy}
         onCancel={onCancel}
-        label={rx ? "Save correction" : "Save prescription"}
+        label={rx ? t("Save correction") : t("Save prescription")}
       />
     </form>
   );
@@ -2642,6 +2969,8 @@ function FamilyForm({
   }) => Promise<unknown>;
   onCancel: () => void;
 }) {
+  const { t } = useLocale();
+
   const [relativeId, setRelative] = useState(""),
     [relationship, setRel] = useState<
       "parent" | "child" | "partner" | "sibling" | "other"
@@ -2658,8 +2987,8 @@ function FamilyForm({
     >
       <div className="form-body">
         <Field
-          label="Family member *"
-          hint="Register them as a customer first if they are not listed."
+          label={t("Family member *")}
+          hint={t("Register them as a customer first if they are not listed.")}
         >
           <select
             required
@@ -2667,7 +2996,7 @@ function FamilyForm({
             value={relativeId}
             onChange={(e) => setRelative(e.target.value)}
           >
-            <option value="">Choose an existing customer</option>
+            <option value="">{t("Choose an existing customer")}</option>
             {options
               .sort((a, b) => name(a).localeCompare(name(b)))
               .map((c) => (
@@ -2677,16 +3006,18 @@ function FamilyForm({
               ))}
           </select>
         </Field>
-        <Field label={`This person is ${customer.firstName}’s…`}>
+        <Field
+          label={t("This person is {name}’s…", { name: customer.firstName })}
+        >
           <select
             value={relationship}
             onChange={(e) => setRel(e.target.value as typeof relationship)}
           >
-            <option value="parent">Parent</option>
-            <option value="child">Child</option>
-            <option value="partner">Partner</option>
-            <option value="sibling">Sibling</option>
-            <option value="other">Other relative</option>
+            <option value="parent">{t("Parent")}</option>
+            <option value="child">{t("Child")}</option>
+            <option value="partner">{t("Partner")}</option>
+            <option value="sibling">{t("Sibling")}</option>
+            <option value="other">{t("Other relative")}</option>
           </select>
         </Field>
         <label className="contact-choice">
@@ -2696,22 +3027,25 @@ function FamilyForm({
             onChange={(e) => setContact(e.target.checked)}
           />
           <span>
-            <b>Use this person as a contact for {customer.firstName}</b>
+            <b>
+              {t("Use this person as a contact for")} {customer.firstName}
+            </b>
             <small>
-              Useful when a parent handles communication for a child.
+              {t("Useful when a parent handles communication for a child.")}
             </small>
           </span>
         </label>
         <div className="notice">
-          The connection appears on both profiles. Each person’s prescriptions
-          and aftercare stay separate.
+          {t(
+            "The connection appears on both profiles. Each person’s prescriptions and aftercare stay separate.",
+          )}
         </div>
       </div>
       <FormActions
         busy={busy}
         disabled={!options.length || !relativeId}
         onCancel={onCancel}
-        label="Link family member"
+        label={t("Link family member")}
       />
     </form>
   );
@@ -2729,6 +3063,8 @@ function CareForm({
   }) => Promise<unknown>;
   onCancel: () => void;
 }) {
+  const { t } = useLocale();
+
   const [error, setError] = useState("");
   return (
     <form
@@ -2747,11 +3083,11 @@ function CareForm({
       <div className="form-body">
         {error && (
           <div className="inline-error" role="alert">
-            {error}
+            {t(error)}
           </div>
         )}
         <div className="form-grid">
-          <Field label="Visit date *">
+          <Field label={t("Visit date *")}>
             <input
               type="date"
               name="date"
@@ -2761,7 +3097,7 @@ function CareForm({
               autoFocus
             />
           </Field>
-          <Field label="Type of care">
+          <Field label={t("Type of care")}>
             <select name="kind">
               {[
                 "Adjustment",
@@ -2770,25 +3106,31 @@ function CareForm({
                 "Warranty",
                 "Other",
               ].map((k) => (
-                <option key={k}>{k}</option>
+                <option key={k} value={k}>
+                  {t(k)}
+                </option>
               ))}
             </select>
           </Field>
         </div>
-        <Field label="Visit notes *">
+        <Field label={t("Visit notes *")}>
           <textarea
             name="notes"
             rows={5}
             maxLength={5000}
             required
-            placeholder="What was done? Include anything useful for the next visit."
+            placeholder={t(
+              "What was done? Include anything useful for the next visit.",
+            )}
           />
         </Field>
         <p className="muted">
-          This visit will be saved as a dated entry in the customer’s history.
+          {t(
+            "This visit will be saved as a dated entry in the customer’s history.",
+          )}
         </p>
       </div>
-      <FormActions busy={busy} onCancel={onCancel} label="Record visit" />
+      <FormActions busy={busy} onCancel={onCancel} label={t("Record visit")} />
     </form>
   );
 }

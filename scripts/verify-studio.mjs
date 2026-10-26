@@ -236,7 +236,97 @@ check(
   ).status === 400,
   "Disguised unsupported attachments are rejected",
 );
+const purchaseData = {
+  date: "2026-10-20",
+  category: "Prescription glasses",
+  description: "Fictional black frames",
+  brand: "Example",
+  model: "TEST-01",
+  quantity: 2,
+  total: "129,90",
+  currency: "EUR",
+  prescriptionId: original.id,
+  reference: "LOCAL-TEST",
+  notes: "Local purchase fixture",
+};
+const purchased = await send(
+  "purchase.create",
+  { customerId: first.id, data: purchaseData },
+  201,
+);
+state = await read();
+let purchase = state.purchases.find((p) => p.id === purchased.id);
+check(
+  purchase.totalCents === 12990 &&
+    purchase.total === "129.90" &&
+    purchase.quantity === 2,
+  "Purchase totals use exact integer cents and accept decimal commas",
+);
+check(
+  purchase.prescriptionId === original.id && purchase.brand === "Example",
+  "Purchase history retains item details and the exact linked prescription",
+);
+await send(
+  "purchase.create",
+  { customerId: second.id, data: purchaseData },
+  400,
+);
+check(true, "A purchase cannot link another customer’s prescription");
+await send(
+  "purchase.create",
+  { customerId: first.id, data: { ...purchaseData, total: "1.999" } },
+  400,
+);
+await send(
+  "purchase.create",
+  { customerId: first.id, data: { ...purchaseData, quantity: 0 } },
+  400,
+);
+check(true, "Invalid monetary precision and quantities are rejected");
+await send("purchase.update", {
+  customerId: first.id,
+  data: {
+    ...purchaseData,
+    id: purchased.id,
+    version: 1,
+    total: "",
+    notes: "Corrected purchase note",
+  },
+});
+await send(
+  "purchase.update",
+  {
+    customerId: first.id,
+    data: { ...purchaseData, id: purchased.id, version: 1 },
+  },
+  409,
+);
+purchase = (await read()).purchases.find((p) => p.id === purchased.id);
+check(
+  purchase.version === 2 &&
+    purchase.totalCents === null &&
+    purchase.notes === "Corrected purchase note",
+  "Purchase edits preserve optional empty amounts and reject stale overwrites",
+);
+const free = await send(
+  "purchase.create",
+  { customerId: first.id, data: { ...purchaseData, total: "0" } },
+  201,
+);
+check(
+  (await read()).purchases.find((p) => p.id === free.id).totalCents === 0,
+  "A recorded zero amount stays distinct from a missing amount",
+);
 await send("customer.archive", { customerId: first.id, version: 2 });
+await send(
+  "purchase.create",
+  { customerId: first.id, data: purchaseData },
+  409,
+);
+check(
+  (await read()).purchases.some((p) => p.id === purchased.id),
+  "Archiving preserves purchase history and blocks new purchases",
+);
 await send(
   "aftercare.create",
   {

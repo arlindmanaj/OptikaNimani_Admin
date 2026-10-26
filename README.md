@@ -1,6 +1,8 @@
 # Nimani Customer Studio
 
-A private customer record system for Optika Nimani. This version focuses on customer registration and editing, dated prescription history, family connections and aftercare. It does not manage sales or Shopify orders.
+A private customer record system for Optika Nimani. It includes customer registration and editing, dated prescription history, purchase history, family connections and aftercare. Shopify continues to manage orders.
+
+The interface defaults to Albanian with a persistent SQ/EN toggle. Language preference is the only data stored in browser local storage; business records stay in D1. Translations are explicit UI strings in `app/sq.json` and `app/locale.tsx`; user-entered descriptions, notes, names and preferences are never translated. Dates and EUR amounts use Albanian formatting in SQ mode. The monochrome design uses the original logo retrieved from https://optikanimani.com/ and included locally as `public/optika-nimani-logo.png`.
 
 ## Architecture
 
@@ -41,6 +43,7 @@ Local D1/R2 data under `.wrangler/` is separate from deployed storage and is ign
 - Customer edits use a version check to prevent stale forms from overwriting newer changes. Customers can be archived and restored.
 - Family relationships are stored once, shown in both directions, and can identify a relative as a contact person. Each family member keeps their own prescriptions and aftercare.
 - Aftercare visits are append-only dated notes with a category and author attribution.
+- Purchases have a date, category, description, brand/model, quantity, optional total in EUR, reference and notes. A purchase can link to a prescription belonging to the same customer. Amounts use integer cents, with missing and zero amounts kept distinct. Edits use version checks and record author-attributed activity. Archiving keeps purchase history. JSON exports include purchase records.
 - Files: JPG, PNG and PDF, maximum 8 MB, with basic signature checks and private downloads. No OCR, automatic extraction or malware scanning is implemented.
 - JSON export includes record data, attachment metadata and the latest 500 activity events. Binary attachments must be downloaded separately. There is no export import/restore workflow or scheduled backup job yet; the JSON export is not a complete disaster-recovery backup.
 
@@ -50,4 +53,4 @@ The Site identity and D1/R2 bindings are retained in `.openai/hosting.json`. Use
 
 ## Current scope
 
-The interface is in English with Albanian prescription purpose labels. No sales counts, loyalty automation, messaging, Shopify integration, appointments, billing or stock management are included. There is no automatic contact with customers. This is a first working version for reviewing the shop's record workflow.
+The interface supports Albanian and English. Purchase history is a manual record, not an order-management or checkout system. No loyalty automation, messaging, Shopify integration, appointments, billing or stock management are included. There is no automatic contact with customers. This is a working version for reviewing the shop's record workflow.

@@ -108,3 +108,28 @@ export const audit = sqliteTable(
   },
   (t) => [index("audit_owner").on(t.ownerId)],
 );
+export const purchases = sqliteTable(
+  "purchases",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    date: text("date").notNull(),
+    category: text("category").notNull(),
+    description: text("description").notNull(),
+    brand: text("brand").notNull().default(""),
+    model: text("model").notNull().default(""),
+    quantity: integer("quantity").notNull(),
+    totalCents: integer("total_cents"),
+    currency: text("currency").notNull().default("EUR"),
+    prescriptionId: text("prescription_id").references(() => prescriptions.id),
+    reference: text("reference").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+    version: integer("version").notNull().default(1),
+    author: text("author").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [index("purchase_customer").on(t.customerId)],
+);

@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
-import { customerInput, rxInput, familyInput, careInput } from "../../model";
+import {
+  customerInput,
+  rxInput,
+  familyInput,
+  careInput,
+  purchaseInput,
+} from "../../model";
 import { sampleCustomers, sampleRx } from "../../sample";
 import { z } from "zod";
 export const dynamic = "force-dynamic";
@@ -87,7 +93,7 @@ export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return json({ error: "Sign in to view customer records" }, 401);
   try {
-    const [cs, rs, fs, as, ats, logs] = await db().batch<
+    const [cs, rs, fs, as, ats, ps, logs] = await db().batch<
       Record<string, unknown>
     >([
       db()
@@ -95,7 +101,13 @@ export async function GET() {
           "SELECT * FROM customers WHERE owner_id = ? ORDER BY updated_at DESC",
         )
         .bind(user.userId),
-      ...["prescriptions", "families", "aftercare", "attachments"].map((t) =>
+      ...[
+        "prescriptions",
+        "families",
+        "aftercare",
+        "attachments",
+        "purchases",
+      ].map((t) =>
         db()
           .prepare(
             `SELECT r.* FROM ${t} r JOIN customers c ON c.id = r.customer_id WHERE c.owner_id = ? ORDER BY r.created_at DESC`,
@@ -133,6 +145,13 @@ export async function GET() {
         return camel(safe);
       }),
       audit: logs.results.map(camel),
+      purchases: ps.results.map((r) => ({
+        ...camel(r),
+        total:
+          r.total_cents === null
+            ? ""
+            : (Number(r.total_cents) / 100).toFixed(2),
+      })),
     });
   } catch (e) {
     console.error("Studio read failed", e);
@@ -221,11 +240,15 @@ export async function POST(request: Request) {
         )
         .bind(...ids)
         .all<{ key: string }>();
-      const statements = ["attachments", "prescriptions", "aftercare"].map(
-        (t) =>
-          db()
-            .prepare(`DELETE FROM ${t} WHERE customer_id IN (${placeholders})`)
-            .bind(...ids),
+      const statements = [
+        "purchases",
+        "attachments",
+        "prescriptions",
+        "aftercare",
+      ].map((t) =>
+        db()
+          .prepare(`DELETE FROM ${t} WHERE customer_id IN (${placeholders})`)
+          .bind(...ids),
       );
       statements.push(
         db()
@@ -334,6 +357,107 @@ export async function POST(request: Request) {
         { error: "Restore this customer before adding records" },
         409,
       );
+    if (
+      body.action === "purchase.create" ||
+      body.action === "purchase.update"
+    ) {
+      const raw = z
+        .object({
+          id: z.string().optional(),
+          version: z.number().int().positive().optional(),
+        })
+        .passthrough()
+        .parse(body.data);
+      const p = purchaseInput.parse(body.data);
+      if (
+        p.prescriptionId &&
+        !(await db()
+          .prepare("SELECT id FROM prescriptions WHERE id=? AND customer_id=?")
+          .bind(p.prescriptionId, cid)
+          .first())
+      )
+        return json(
+          { error: "Choose a prescription belonging to this customer" },
+          400,
+        );
+      const cents =
+        p.total === ""
+          ? null
+          : (() => {
+              const [whole, fraction = ""] = p.total
+                .replace(",", ".")
+                .split(".");
+              return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+            })();
+      if (body.action === "purchase.create") {
+        const pid = id();
+        await db().batch([
+          db()
+            .prepare(
+              "INSERT INTO purchases (id,customer_id,date,category,description,brand,model,quantity,total_cents,currency,prescription_id,reference,notes,version,author,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)",
+            )
+            .bind(
+              pid,
+              cid,
+              p.date,
+              p.category,
+              p.description,
+              p.brand,
+              p.model,
+              p.quantity,
+              cents,
+              p.currency,
+              p.prescriptionId,
+              p.reference,
+              p.notes,
+              author,
+              now,
+              now,
+            ),
+          audit(owner, cid, "Purchase recorded", author, now),
+        ]);
+        return json({ id: pid }, 201);
+      }
+      const pid = z.string().min(1).parse(raw.id),
+        version = z.number().int().positive().parse(raw.version);
+      const result = await db().batch([
+        db()
+          .prepare(
+            "UPDATE purchases SET date=?,category=?,description=?,brand=?,model=?,quantity=?,total_cents=?,currency=?,prescription_id=?,reference=?,notes=?,version=version+1,updated_at=? WHERE id=? AND customer_id=? AND version=?",
+          )
+          .bind(
+            p.date,
+            p.category,
+            p.description,
+            p.brand,
+            p.model,
+            p.quantity,
+            cents,
+            p.currency,
+            p.prescriptionId,
+            p.reference,
+            p.notes,
+            now,
+            pid,
+            cid,
+            version,
+          ),
+        db()
+          .prepare(
+            "INSERT INTO audit (id,owner_id,customer_id,action,author,created_at) SELECT ?,?,?,?,?,? WHERE changes()>0",
+          )
+          .bind(id(), owner, cid, "Purchase updated", author, now),
+      ]);
+      if (!result[0].meta.changes)
+        return json(
+          {
+            error:
+              "This purchase changed elsewhere or is unavailable. Reload before editing.",
+          },
+          409,
+        );
+      return json({ ok: true });
+    }
     if (body.action === "prescription.create") {
       const r = rxInput.parse(body.data),
         rid = id();
@@ -442,7 +566,7 @@ export async function POST(request: Request) {
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
     if (e instanceof z.ZodError)
-      return json({ error: e.issues.map((i) => i.message).join(". ") }, 400);
+      return json({ error: e.issues[0].message }, 400);
     if (e instanceof Error && /UNIQUE constraint/i.test(e.message))
       return json(
         {

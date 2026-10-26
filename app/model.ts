@@ -177,6 +177,53 @@ export type Store = {
   aftercare: Care[];
   attachments: Attachment[];
   audit: Audit[];
+  purchases: Purchase[];
+};
+export const purchaseCategories = [
+  "Prescription glasses",
+  "Sunglasses",
+  "Frames",
+  "Lenses",
+  "Contact lenses",
+  "Accessory",
+  "Other",
+] as const;
+export const purchaseInput = z.object({
+  date: date.refine(
+    (v) => v <= today(),
+    "Purchase date cannot be in the future",
+  ),
+  category: z.enum(purchaseCategories),
+  description: z.string().trim().min(1, "Describe the purchased item").max(200),
+  brand: z.string().trim().max(100).default(""),
+  model: z.string().trim().max(100).default(""),
+  quantity: z
+    .number({ invalid_type_error: "Enter a valid quantity" })
+    .int()
+    .min(1, "Quantity must be at least 1")
+    .max(1000),
+  total: z
+    .string()
+    .trim()
+    .max(20)
+    .refine(
+      (v) => v === "" || /^\d{1,8}([.,]\d{1,2})?$/.test(v),
+      "Enter a valid amount with up to two decimal places",
+    ),
+  currency: z.literal("EUR").default("EUR"),
+  prescriptionId: z.string().min(1).max(200).nullable().default(null),
+  reference: z.string().trim().max(150).default(""),
+  notes: z.string().trim().max(5000).default(""),
+});
+export type PurchaseInput = z.infer<typeof purchaseInput>;
+export type Purchase = PurchaseInput & {
+  id: string;
+  customerId: string;
+  totalCents: number | null;
+  version: number;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
 };
 export const emptyGrid = (): Grid =>
   Object.fromEntries(
