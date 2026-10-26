@@ -5,7 +5,8 @@ assert(
   ["127.0.0.1", "localhost"].includes(new URL(origin).hostname),
   "Run these checks only against a local preview",
 );
-const cookie = "__sites_local_auth=1";
+const cookie = process.env.NIMANI_TEST_COOKIE;
+assert(cookie,'Use verify-auth.mjs to run with a real local session');
 let checks = 0;
 function check(condition, message) {
   assert(condition, message);

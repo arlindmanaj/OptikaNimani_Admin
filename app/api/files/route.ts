@@ -1,11 +1,11 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getStaffUser } from "../../auth";
 export const dynamic = "force-dynamic";
 const reply = (error: string, status: number) =>
   Response.json({ error }, { status });
 const max = 8 * 1024 * 1024;
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getStaffUser();
   if (!user) return reply("Sign in to attach files", 401);
   if (request.headers.get("origin") !== new URL(request.url).origin)
     return reply("Invalid request origin", 403);
@@ -19,9 +19,9 @@ export async function POST(request: Request) {
     if (!(file instanceof File) || file.size === 0 || file.size > max)
       return reply("Choose a non-empty file up to 8 MB", 400);
     const row = await env.DB.prepare(
-      "SELECT p.customer_id,c.archived FROM prescriptions p JOIN customers c ON c.id=p.customer_id WHERE p.id=? AND c.owner_id=?",
+      "SELECT p.customer_id,c.archived FROM prescriptions p JOIN customers c ON c.id=p.customer_id WHERE p.id=?",
     )
-      .bind(rxId, user.userId)
+      .bind(rxId)
       .first<{ customer_id: string; archived: number }>();
     if (!row) return reply("Prescription not found", 404);
     if (row.archived)
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
             : null;
     if (!mime) return reply("Use a JPG, PNG or PDF file", 400);
     const fid = crypto.randomUUID(),
-      key = `${user.userId}/${fid}`,
+      key = `${user.shopId}/${fid}`,
       now = new Date().toISOString();
     await env.BUCKET.put(key, bytes, { httpMetadata: { contentType: mime } });
     try {
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
           "INSERT INTO audit (id,owner_id,customer_id,action,author,created_at) VALUES (?,?,?,?,?,?)",
         ).bind(
           crypto.randomUUID(),
-          user.userId,
+          user.shopId,
           row.customer_id,
           "Prescription attachment added",
           user.displayName,
@@ -79,15 +79,15 @@ export async function POST(request: Request) {
   }
 }
 export async function GET(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getStaffUser();
   if (!user) return reply("Sign in to view files", 401);
   if (!env.DB || !env.BUCKET) return reply("File storage is unavailable", 503);
   try {
     const fid = new URL(request.url).searchParams.get("id");
     const a = await env.DB.prepare(
-      "SELECT a.* FROM attachments a JOIN customers c ON c.id=a.customer_id WHERE a.id=? AND c.owner_id=?",
+      "SELECT a.* FROM attachments a JOIN customers c ON c.id=a.customer_id WHERE a.id=?",
     )
-      .bind(fid, user.userId)
+      .bind(fid)
       .first<{ key: string; mime: string; name: string }>();
     if (!a) return reply("File not found", 404);
     const obj = await env.BUCKET.get(a.key);

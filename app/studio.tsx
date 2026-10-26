@@ -65,6 +65,8 @@ import {
   type PurchaseInput,
 } from "./model";
 import PurchaseForm from "./purchase-form";
+import FamilyPurchases from "./family-purchases";
+import StaffPanel, { PasswordSettings, signOut } from "./staff-panel";
 import { useLocale, LanguageSwitch, dateLabel, money } from "./locale";
 
 type View =
@@ -73,7 +75,9 @@ type View =
   | "families"
   | "aftercare"
   | "purchases"
-  | "settings";
+  | "settings"
+  | "staff";
+// Staff administration is shown only to administrators; the API enforces it too.
 type Tab =
   | "overview"
   | "prescriptions"
@@ -336,7 +340,17 @@ function GridTable({ rx }: { rx: RxInput }) {
   );
 }
 
-export default function Studio({ displayName }: { displayName: string }) {
+export default function Studio({
+  displayName,
+  role,
+  staffId,
+  email,
+}: {
+  displayName: string;
+  role: "admin" | "staff";
+  staffId: string;
+  email: string;
+}) {
   const { t, language } = useLocale();
   const fmt = (v: string) => dateLabel(v, language);
   const [data, setData] = useState<Store>(empty),
@@ -358,6 +372,10 @@ export default function Studio({ displayName }: { displayName: string }) {
   const load = useCallback(async () => {
     const r = await fetch("/api/studio", { cache: "no-store" });
     const d = (await r.json()) as Store & { error?: string };
+    if (r.status === 401) {
+      window.location.assign("/login");
+      throw new Error("Please sign in");
+    }
     if (!r.ok) throw new Error(d.error || "Unable to load records");
     setData(d);
     setLoadError("");
@@ -378,6 +396,7 @@ export default function Studio({ displayName }: { displayName: string }) {
           "aftercare",
           "purchases",
           "settings",
+          ...(role === "admin" ? ["staff"] : []),
         ].includes(p.get("view") || "")
           ? p.get("view")
           : "customers") as View,
@@ -452,6 +471,10 @@ export default function Studio({ displayName }: { displayName: string }) {
         ok?: boolean;
         error?: string;
       };
+      if (r.status === 401) {
+        window.location.assign("/login");
+        return null;
+      }
       if (!r.ok) throw new Error(result.error || "Could not save");
       setModal(null);
       setToast(message);
@@ -532,6 +555,9 @@ export default function Studio({ displayName }: { displayName: string }) {
     ["families", "Family connections", Network],
     ["aftercare", "Aftercare", HeartHandshake],
     ["purchases", "Purchases", ShoppingBag],
+    ...(role === "admin"
+      ? [["staff", "Staff accounts", ShieldCheck] as const]
+      : []),
   ] as const;
   const headings = {
     customers: [
@@ -548,6 +574,7 @@ export default function Studio({ displayName }: { displayName: string }) {
       "Keep the small details that make great service.",
     ],
     settings: ["Workspace settings", "Your records, your workspace."],
+    staff: ["Staff accounts", "The people behind great customer care."],
     purchases: ["Purchase history", "What they chose, remembered."],
   } as const;
   function exportData() {
@@ -830,7 +857,7 @@ export default function Studio({ displayName }: { displayName: string }) {
                   ? displayName.split("@")[0]
                   : displayName}
               </b>
-              <small>{t("Private workspace")}</small>
+              <small>{t(role === "admin" ? "Administrator" : "Staff")}</small>
             </div>
             <ShieldCheck size={17} />
           </div>
@@ -938,6 +965,15 @@ export default function Studio({ displayName }: { displayName: string }) {
                       >
                         {t("Edit details")}
                       </button>
+                      {!customer.archived && (
+                        <button
+                          className="button secondary"
+                          onClick={() => open({ kind: "purchase", customer })}
+                        >
+                          <ShoppingBag size={15} />
+                          {t("Register purchase")}
+                        </button>
+                      )}
                       {!customer.archived && (
                         <button
                           className="button primary"
@@ -1086,6 +1122,15 @@ export default function Studio({ displayName }: { displayName: string }) {
                         </section>
                       </div>
                       <div className="profile-aside">
+                        <FamilyPurchases
+                          compact
+                          customer={customer}
+                          data={data}
+                          onOpen={(id) => go("customers", id, "purchases")}
+                          onHistory={() =>
+                            go("customers", customer.id, "purchases")
+                          }
+                        />
                         <section className="card contact-card">
                           <div className="card-title">
                             <h3>{t("Customer details")}</h3>
@@ -1302,37 +1347,49 @@ export default function Studio({ displayName }: { displayName: string }) {
                     </section>
                   )}
                   {tab === "purchases" && (
-                    <section className="card">
-                      <div className="card-title">
-                        <div>
-                          <h2>{t("Purchase history")}</h2>
-                          <p>
-                            {t(
-                              "Record what this customer has bought, whenever they visit.",
-                            )}
-                          </p>
+                    <>
+                      <FamilyPurchases
+                        customer={customer}
+                        data={data}
+                        onOpen={(id) => go("customers", id, "purchases")}
+                        onHistory={() =>
+                          go("customers", customer.id, "purchases")
+                        }
+                      />
+                      <section className="card">
+                        <div className="card-title">
+                          <div>
+                            <h2>{t("Personal purchase history")}</h2>
+                            <p>
+                              {t(
+                                "Record what this customer has bought, whenever they visit.",
+                              )}
+                            </p>
+                          </div>
+                          {!customer.archived && (
+                            <button
+                              className="button primary"
+                              onClick={() =>
+                                open({ kind: "purchase", customer })
+                              }
+                            >
+                              <Plus size={16} />
+                              {t("Register purchase")}
+                            </button>
+                          )}
                         </div>
-                        {!customer.archived && (
-                          <button
-                            className="button primary"
-                            onClick={() => open({ kind: "purchase", customer })}
+                        {getPurchases(customer.id).length ? (
+                          getPurchases(customer.id).map((p) => purchaseCard(p))
+                        ) : (
+                          <Empty
+                            icon={<ShoppingBag />}
+                            title={t("No purchases yet")}
                           >
-                            <Plus size={16} />
-                            {t("Register purchase")}
-                          </button>
+                            {t("No purchases recorded yet.")}
+                          </Empty>
                         )}
-                      </div>
-                      {getPurchases(customer.id).length ? (
-                        getPurchases(customer.id).map((p) => purchaseCard(p))
-                      ) : (
-                        <Empty
-                          icon={<ShoppingBag />}
-                          title={t("No purchases yet")}
-                        >
-                          {t("No purchases recorded yet.")}
-                        </Empty>
-                      )}
-                    </section>
+                      </section>
+                    </>
                   )}
                   {tab === "activity" && (
                     <section className="card">
@@ -1953,8 +2010,12 @@ export default function Studio({ displayName }: { displayName: string }) {
                       )}
                     </section>
                   )}
+                  {view === "staff" && role === "admin" && (
+                    <StaffPanel currentId={staffId} />
+                  )}
                   {view === "settings" && (
                     <div className="settings-grid">
+                      <PasswordSettings />
                       <section className="card">
                         <div className="card-title">
                           <h2>{t("Your workspace")}</h2>
@@ -1966,17 +2027,22 @@ export default function Studio({ displayName }: { displayName: string }) {
                             <dt>{t("Signed in as")}</dt>
                             <dd>{displayName}</dd>
                             <dt>{t("Record access")}</dt>
-                            <dd>{t("This account’s private records")}</dd>
+                            <dd>{t("Shared store records")}</dd>
+                            <dt>{t("Email address")}</dt>
+                            <dd>{email}</dd>
+                            <dt>{t("Role")}</dt>
+                            <dd>
+                              {t(role === "admin" ? "Administrator" : "Staff")}
+                            </dd>
                             <dt>{t("Storage")}</dt>
                             <dd>{t("Records saved across devices")}</dd>
                           </dl>
-                          <a
+                          <button
                             className="button secondary"
-                            href="/signout-with-chatgpt?return_to=%2F"
-                            target="_top"
+                            onClick={signOut}
                           >
                             {t("Sign out")} <ArrowUpRight size={15} />
-                          </a>
+                          </button>
                         </div>
                       </section>
                       <section className="card">

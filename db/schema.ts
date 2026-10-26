@@ -133,3 +133,38 @@ export const purchases = sqliteTable(
   },
   (t) => [index("purchase_customer").on(t.customerId)],
 );
+export const staff = sqliteTable(
+  "staff",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    role: text("role").notNull(),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    lastLogin: text("last_login"),
+  },
+  (t) => [uniqueIndex("staff_email").on(t.email)],
+);
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    staffId: text("staff_id")
+      .notNull()
+      .references(() => staff.id),
+    expiresAt: integer("expires_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("sessions_staff").on(t.staffId),
+    index("sessions_expiry").on(t.expiresAt),
+  ],
+);
+export const loginLimits = sqliteTable("login_limits", {
+  key: text("key").primaryKey(),
+  attempts: integer("attempts").notNull(),
+  windowStart: integer("window_start").notNull(),
+});

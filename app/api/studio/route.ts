@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getStaffUser } from "../../auth";
 import {
   customerInput,
   rxInput,
@@ -18,10 +18,10 @@ function db() {
   if (!env.DB) throw new Error("Database is not configured");
   return env.DB;
 }
-async function owned(customerId: string, ownerId: string) {
+async function owned(customerId: string) {
   return db()
-    .prepare("SELECT * FROM customers WHERE id = ? AND owner_id = ?")
-    .bind(customerId, ownerId)
+    .prepare("SELECT * FROM customers WHERE id = ?")
+    .bind(customerId)
     .first<Record<string, unknown>>();
 }
 function audit(
@@ -90,17 +90,13 @@ function rxStmt(
     );
 }
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getStaffUser();
   if (!user) return json({ error: "Sign in to view customer records" }, 401);
   try {
     const [cs, rs, fs, as, ats, ps, logs] = await db().batch<
       Record<string, unknown>
     >([
-      db()
-        .prepare(
-          "SELECT * FROM customers WHERE owner_id = ? ORDER BY updated_at DESC",
-        )
-        .bind(user.userId),
+      db().prepare("SELECT * FROM customers ORDER BY updated_at DESC"),
       ...[
         "prescriptions",
         "families",
@@ -108,17 +104,11 @@ export async function GET() {
         "attachments",
         "purchases",
       ].map((t) =>
-        db()
-          .prepare(
-            `SELECT r.* FROM ${t} r JOIN customers c ON c.id = r.customer_id WHERE c.owner_id = ? ORDER BY r.created_at DESC`,
-          )
-          .bind(user.userId),
+        db().prepare(
+          `SELECT r.* FROM ${t} r JOIN customers c ON c.id = r.customer_id ORDER BY r.created_at DESC`,
+        ),
       ),
-      db()
-        .prepare(
-          "SELECT * FROM audit WHERE owner_id = ? ORDER BY created_at DESC LIMIT 500",
-        )
-        .bind(user.userId),
+      db().prepare("SELECT * FROM audit ORDER BY created_at DESC LIMIT 500"),
     ]);
     const camel = (r: Record<string, unknown>) =>
       Object.fromEntries(
@@ -159,7 +149,7 @@ export async function GET() {
   }
 }
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getStaffUser();
   if (!user) return json({ error: "Sign in to change customer records" }, 401);
   if (request.headers.get("origin") !== new URL(request.url).origin)
     return json({ error: "This request must come from the workspace" }, 403);
@@ -174,11 +164,15 @@ export async function POST(request: Request) {
     };
     const now = new Date().toISOString(),
       author = user.displayName,
-      owner = user.userId;
+      owner = user.shopId;
+    if (
+      ["sample", "samples.remove"].includes(body.action) &&
+      user.role !== "admin"
+    )
+      return json({ error: "Administrator access required" }, 403);
     if (body.action === "sample") {
       const existing = await db()
-        .prepare("SELECT id FROM customers WHERE owner_id = ? LIMIT 1")
-        .bind(owner)
+        .prepare("SELECT id FROM customers LIMIT 1")
         .first();
       if (existing)
         return json(
@@ -227,8 +221,7 @@ export async function POST(request: Request) {
     }
     if (body.action === "samples.remove") {
       const demo = await db()
-        .prepare("SELECT id FROM customers WHERE owner_id=? AND demo=1")
-        .bind(owner)
+        .prepare("SELECT id FROM customers WHERE demo=1")
         .all<{ id: string }>();
       const ids = demo.results.map((r) => r.id);
       if (!ids.length) return json({ ok: true });
@@ -257,13 +250,9 @@ export async function POST(request: Request) {
           )
           .bind(...ids, ...ids),
         db()
-          .prepare(
-            `DELETE FROM audit WHERE customer_id IN (${placeholders}) AND owner_id=?`,
-          )
-          .bind(...ids, owner),
-        db()
-          .prepare("DELETE FROM customers WHERE owner_id=? AND demo=1")
-          .bind(owner),
+          .prepare(`DELETE FROM audit WHERE customer_id IN (${placeholders}) `)
+          .bind(...ids),
+        db().prepare("DELETE FROM customers WHERE demo=1"),
       );
       await db().batch(statements);
       if (env.BUCKET && keys.results.length)
@@ -280,7 +269,7 @@ export async function POST(request: Request) {
       return json({ id: cid }, 201);
     }
     const cid = z.string().min(1).max(200).parse(body.customerId),
-      customer = await owned(cid, owner);
+      customer = await owned(cid);
     if (!customer) return json({ error: "Customer was not found" }, 404);
     if (
       body.action === "customer.update" ||
@@ -302,7 +291,7 @@ export async function POST(request: Request) {
       const statement = c
         ? db()
             .prepare(
-              "UPDATE customers SET first_name=?,last_name=?,phone=?,email=?,dob=?,address=?,notes=?,tags=?,version=version+1,updated_at=? WHERE id=? AND owner_id=? AND version=?",
+              "UPDATE customers SET first_name=?,last_name=?,phone=?,email=?,dob=?,address=?,notes=?,tags=?,version=version+1,updated_at=? WHERE id=? AND version=?",
             )
             .bind(
               c.firstName,
@@ -315,14 +304,13 @@ export async function POST(request: Request) {
               JSON.stringify(c.tags),
               now,
               cid,
-              owner,
               version,
             )
         : db()
             .prepare(
-              "UPDATE customers SET archived=?,version=version+1,updated_at=? WHERE id=? AND owner_id=? AND version=?",
+              "UPDATE customers SET archived=?,version=version+1,updated_at=? WHERE id=? AND version=?",
             )
-            .bind(customer.archived ? 0 : 1, now, cid, owner, version);
+            .bind(customer.archived ? 0 : 1, now, cid, version);
       const result = await db().batch([
         statement,
         db()
@@ -501,7 +489,7 @@ export async function POST(request: Request) {
       const f = familyInput.parse(body.data);
       if (f.relativeId === cid)
         return json({ error: "Choose a different customer" }, 400);
-      const relative = await owned(f.relativeId, owner);
+      const relative = await owned(f.relativeId);
       if (!relative || relative.archived)
         return json(
           { error: "Choose an active customer in this workspace" },

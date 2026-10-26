@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { LocaleProvider } from "./locale";
 import "./brand.css";
+import './accounts.css';
 
 export const metadata: Metadata = {
   title: "Optika Nimani | Menaxhimi i klientëve",
