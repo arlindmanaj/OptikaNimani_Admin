@@ -180,6 +180,7 @@ export default function PurchaseForm({
                   {prescriptions.some((r) => r.supersedesId === rx.id)
                     ? ` · ${t("Corrected")}`
                     : ""}
+                  {rx.deletedAt ? ` · ${t("Deleted records")}` : ""}
                 </option>
               ))}
           </select>,

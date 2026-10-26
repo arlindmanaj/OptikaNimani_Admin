@@ -389,6 +389,22 @@ check(
   true,
   "Deleted prescriptions cannot receive new links and their attachments stay out of active downloads",
 );
+await send("purchase.update", {
+  customerId: first.id,
+  data: {
+    ...purchaseData,
+    id: free.id,
+    version: 1,
+    total: "0",
+    notes: "Edited while historical prescription is deleted",
+  },
+});
+check(
+  (await read()).purchases.some(
+    (p) => p.id === free.id && p.prescriptionId === original.id,
+  ),
+  "Existing purchases can still be edited while preserving their deleted historical prescription link",
+);
 await send("prescription.restore", {
   customerId: first.id,
   data: { id: original.id, deletedAt: removedRx.deletedAt },

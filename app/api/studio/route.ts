@@ -467,11 +467,23 @@ export async function POST(request: Request) {
           )
           .bind(p.prescriptionId, cid)
           .first())
-      )
-        return json(
-          { error: "Choose a prescription belonging to this customer" },
-          400,
-        );
+      ) {
+        // Existing historical links survive deletion of a prescription.
+        const unchanged =
+          body.action === "purchase.update" &&
+          raw.id &&
+          (await db()
+            .prepare(
+              "SELECT id FROM purchases WHERE id=? AND customer_id=? AND prescription_id=? AND deleted_at IS NULL",
+            )
+            .bind(raw.id, cid, p.prescriptionId)
+            .first());
+        if (!unchanged)
+          return json(
+            { error: "Choose a prescription belonging to this customer" },
+            400,
+          );
+      }
       const cents =
         p.total === ""
           ? null

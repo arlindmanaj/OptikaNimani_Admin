@@ -2400,9 +2400,12 @@ export default function Studio({
           {modal.kind === "purchase" && modal.customer && (
             <PurchaseForm
               purchase={modal.purchase}
-              prescriptions={data.prescriptions.filter(
-                (p) => p.customerId === modal.customer!.id,
-              )}
+              prescriptions={[
+                ...data.prescriptions,
+                ...data.deletedPrescriptions.filter(
+                  (p) => p.id === modal.purchase?.prescriptionId,
+                ),
+              ].filter((p) => p.customerId === modal.customer!.id)}
               busy={busy}
               onCancel={close}
               onSave={(p) =>
