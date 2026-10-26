@@ -40,6 +40,7 @@ import {
   SlidersHorizontal,
   ShoppingBag,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import {
   customerInput,
@@ -65,6 +66,8 @@ import {
   type PurchaseInput,
 } from "./model";
 import PurchaseForm from "./purchase-form";
+import DateInput from "./date-input";
+import DeletedRecords from "./deleted-records";
 import FamilyPurchases from "./family-purchases";
 import StaffPanel, { PasswordSettings, signOut } from "./staff-panel";
 import { useLocale, LanguageSwitch, dateLabel, money } from "./locale";
@@ -84,7 +87,8 @@ type Tab =
   | "family"
   | "aftercare"
   | "purchases"
-  | "activity";
+  | "activity"
+  | "deleted";
 const tabLabels: Record<Tab, string> = {
   overview: "Overview",
   prescriptions: "Prescriptions",
@@ -92,6 +96,7 @@ const tabLabels: Record<Tab, string> = {
   aftercare: "Aftercare",
   purchases: "Purchases",
   activity: "Activity",
+  deleted: "Deleted records",
 };
 type Modal = {
   kind:
@@ -104,7 +109,9 @@ type Modal = {
     | "compare"
     | "archive"
     | "unlink"
-    | "samplesRemove";
+    | "samplesRemove"
+    | "delete";
+  deletion?: "purchase" | "prescription";
   customer?: Customer;
   rx?: Prescription;
   family?: Family;
@@ -118,6 +125,8 @@ const empty: Store = {
   attachments: [],
   audit: [],
   purchases: [],
+  deletedPrescriptions: [],
+  deletedPurchases: [],
 };
 const initials = (c?: Customer) =>
   c ? (c.firstName[0] + c.lastName[0]).toUpperCase() : "N";
@@ -409,6 +418,7 @@ export default function Studio({
           "family",
           "aftercare",
           "activity",
+          "deleted",
           "purchases",
         ].includes(p.get("tab") || "")
           ? p.get("tab")
@@ -634,6 +644,20 @@ export default function Studio({
             >
               <ArrowUpRight size={18} />
             </button>
+            <button
+              className="icon-button"
+              aria-label={t("Delete prescription")}
+              onClick={() =>
+                open({
+                  kind: "delete",
+                  deletion: "prescription",
+                  customer: getC(rx.customerId),
+                  rx,
+                })
+              }
+            >
+              <Trash2 size={16} />
+            </button>
           </div>
         </div>
         <GridTable rx={rx} />
@@ -773,6 +797,11 @@ export default function Studio({
             <span>{fmt(p.date)}</span>
           </div>
           {p.notes && <p className="preserve">{p.notes}</p>}
+          {p.prescriptionId && !rx && (
+            <small className="linked-deleted-note">
+              {t("Linked prescription is in Deleted records.")}
+            </small>
+          )}
           {p.reference && (
             <small>
               {t("Receipt / reference")}: {p.reference}
@@ -802,6 +831,20 @@ export default function Studio({
                   <Pencil size={15} />
                 </button>
               )}
+              <button
+                className="icon-button"
+                aria-label={t("Delete purchase")}
+                onClick={() =>
+                  open({
+                    kind: "delete",
+                    deletion: "purchase",
+                    customer: c,
+                    purchase: p,
+                  })
+                }
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
           </div>
         </div>
@@ -1013,6 +1056,7 @@ export default function Studio({
                         "family",
                         "aftercare",
                         "activity",
+                        "deleted",
                       ] as Tab[]
                     ).map((section) => (
                       <button
@@ -1426,6 +1470,31 @@ export default function Studio({
                       )}
                     </section>
                   )}
+                  {tab === "deleted" && (
+                    <DeletedRecords
+                      customerId={customer.id}
+                      data={data}
+                      busy={busy}
+                      onRestore={(kind, record) =>
+                        act(
+                          `${kind}.restore`,
+                          {
+                            customerId: customer.id,
+                            data: {
+                              id: record.id,
+                              ...("version" in record
+                                ? { version: record.version }
+                                : {}),
+                              deletedAt: record.deletedAt,
+                            },
+                          },
+                          kind === "purchase"
+                            ? "Purchase restored"
+                            : "Prescription restored",
+                        )
+                      }
+                    />
+                  )}
                 </>
               ) : (
                 <>
@@ -1529,6 +1598,26 @@ export default function Studio({
                           </div>
                         </div>
                         <div className="directory-tools">
+                          <div className="directory-search">
+                            <Search size={17} />
+                            <input
+                              aria-label={t("Search client list")}
+                              placeholder={t(
+                                "Search by name, phone, email or tag…",
+                              )}
+                              value={query}
+                              onChange={(e) => setQuery(e.target.value)}
+                            />
+                            {query && (
+                              <button
+                                className="icon-button"
+                                aria-label={t("Clear search")}
+                                onClick={() => setQuery("")}
+                              >
+                                <X size={15} />
+                              </button>
+                            )}
+                          </div>
                           <div className="filter-tabs">
                             {[
                               ["active", "All customers"],
@@ -2150,33 +2239,37 @@ export default function Studio({
         <Dialog
           wide={["rx", "viewRx", "compare"].includes(modal.kind)}
           title={
-            modal.kind === "purchase"
-              ? modal.purchase
-                ? t("Edit purchase")
-                : t("Register purchase")
-              : modal.kind === "customer"
-                ? modal.customer
-                  ? t("Edit customer details")
-                  : t("A new familiar face")
-                : modal.kind === "rx"
-                  ? modal.rx
-                    ? t("Correct prescription")
-                    : t("Add prescription")
-                  : modal.kind === "family"
-                    ? t("Connect a family member")
-                    : modal.kind === "care"
-                      ? t("Record an aftercare visit")
-                      : modal.kind === "viewRx"
-                        ? t("Prescription record")
-                        : modal.kind === "compare"
-                          ? t("Compare prescriptions")
-                          : modal.kind === "archive"
-                            ? modal.customer?.archived
-                              ? t("Restore customer?")
-                              : t("Archive customer?")
-                            : modal.kind === "unlink"
-                              ? t("Remove family connection?")
-                              : t("Remove fictional samples?")
+            modal.deletion
+              ? modal.deletion === "purchase"
+                ? t("Delete purchase?")
+                : t("Delete prescription?")
+              : modal.kind === "purchase"
+                ? modal.purchase
+                  ? t("Edit purchase")
+                  : t("Register purchase")
+                : modal.kind === "customer"
+                  ? modal.customer
+                    ? t("Edit customer details")
+                    : t("A new familiar face")
+                  : modal.kind === "rx"
+                    ? modal.rx
+                      ? t("Correct prescription")
+                      : t("Add prescription")
+                    : modal.kind === "family"
+                      ? t("Connect a family member")
+                      : modal.kind === "care"
+                        ? t("Record an aftercare visit")
+                        : modal.kind === "viewRx"
+                          ? t("Prescription record")
+                          : modal.kind === "compare"
+                            ? t("Compare prescriptions")
+                            : modal.kind === "archive"
+                              ? modal.customer?.archived
+                                ? t("Restore customer?")
+                                : t("Archive customer?")
+                              : modal.kind === "unlink"
+                                ? t("Remove family connection?")
+                                : t("Remove fictional samples?")
           }
           subtitle={
             modal.customer
@@ -2190,6 +2283,53 @@ export default function Studio({
           {error && (
             <div className="inline-error" role="alert">
               {t(error)}
+            </div>
+          )}
+          {modal.deletion && modal.customer && (
+            <div className="confirm-body">
+              <p>
+                {t(
+                  modal.deletion === "purchase"
+                    ? "This purchase will be removed from personal and family totals. You can restore it from Deleted records."
+                    : "This prescription will move to Deleted records. Linked purchases, original documents and other prescription revisions will be preserved.",
+                )}
+              </p>
+              <div className="dialog-actions">
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={close}
+                >
+                  {t("Cancel")}
+                </button>
+                <button
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() =>
+                    act(
+                      `${modal.deletion}.delete`,
+                      {
+                        customerId: modal.customer!.id,
+                        data: {
+                          id:
+                            modal.deletion === "purchase"
+                              ? modal.purchase!.id
+                              : modal.rx!.id,
+                          ...(modal.deletion === "purchase"
+                            ? { version: modal.purchase!.version }
+                            : {}),
+                        },
+                      },
+                      modal.deletion === "purchase"
+                        ? "Purchase deleted. Restore it from Deleted records if needed."
+                        : "Prescription deleted. Restore it from Deleted records if needed.",
+                    )
+                  }
+                >
+                  <Trash2 size={15} />
+                  {t(busy ? "Saving…" : "Delete")}
+                </button>
+              </div>
             </div>
           )}
           {modal.kind === "customer" && (
@@ -2438,6 +2578,20 @@ export default function Studio({
                 >
                   <Printer size={16} />
                   {t("Print record")}
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() =>
+                    open({
+                      kind: "delete",
+                      deletion: "prescription",
+                      customer: modal.customer,
+                      rx: modal.rx,
+                    })
+                  }
+                >
+                  <Trash2 size={15} />
+                  {t("Delete prescription")}
                 </button>
                 {!modal.customer?.archived &&
                   !data.prescriptions.some(
@@ -2712,11 +2866,11 @@ function CustomerForm({
             />
           </Field>
           <Field label={t("Date of birth")}>
-            <input
-              type="date"
+            <DateInput
+              label={t("Date of birth")}
               max={today()}
               value={c.dob}
-              onChange={(e) => set("dob", e.target.value)}
+              onChange={(v) => set("dob", v)}
             />
           </Field>
           <Field label={t("Address / city")}>
@@ -2846,12 +3000,12 @@ function RxForm({
         )}
         <div className="form-grid">
           <Field label={t("Prescription date *")}>
-            <input
-              type="date"
+            <DateInput
+              label={t("Prescription date *")}
               required
               max={today()}
               value={r.date}
-              onChange={(e) => setR({ ...r, date: e.target.value })}
+              onChange={(v) => setR({ ...r, date: v })}
             />
           </Field>
           <Field label={t("Prescriber / doctor")}>
@@ -3154,8 +3308,8 @@ function CareForm({
         )}
         <div className="form-grid">
           <Field label={t("Visit date *")}>
-            <input
-              type="date"
+            <DateInput
+              label={t("Visit date *")}
               name="date"
               defaultValue={today()}
               max={today()}

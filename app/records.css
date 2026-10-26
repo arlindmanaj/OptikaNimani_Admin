@@ -1,0 +1,170 @@
+.date-entry {
+  min-width: 0;
+}
+.dialog-actions {
+  flex-wrap: wrap;
+}
+.date-entry-controls {
+  position: relative;
+  display: flex;
+  border: 1px solid #dcdcdc;
+  border-radius: 5px;
+  background: #fff;
+  min-width: 0;
+}
+.date-entry-controls > input[type="text"] {
+  background: none;
+  border: 0;
+  padding: 11px 12px;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  font-size: 12px;
+  font-weight: 400;
+  color: #252525;
+  border-radius: 5px;
+}
+.date-entry-controls > input[type="text"]::placeholder {
+  font-size: 11px;
+  color: #969696;
+}
+.date-entry-controls:focus-within {
+  outline: 2px solid #888;
+  outline-offset: 1px;
+}
+.date-entry-controls > input[type="text"]:focus {
+  outline: 0;
+}
+.date-picker-button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 39px;
+  background: #fafafa;
+  color: #666;
+  border: 0;
+  border-left: 1px solid #e6e6e6;
+  border-radius: 0 5px 5px 0;
+}
+.date-picker-button:hover {
+  background: #eee;
+  color: #111;
+}
+.date-entry-hint {
+  font-size: 9px !important;
+  font-weight: 400;
+  display: block;
+  margin-top: 7px;
+  color: #888 !important;
+}
+.native-date-picker {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  right: 17px;
+  bottom: 4px;
+  padding: 0;
+  border: 0;
+}
+.directory-tools {
+  flex-wrap: wrap;
+}
+.directory-search {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: #fafafa;
+  border: 1px solid #dfdfdf;
+  border-radius: 5px;
+  color: #777;
+  margin-bottom: 7px;
+  min-height: 41px;
+}
+.directory-search input {
+  background: none;
+  border: 0;
+  flex: 1;
+  min-width: 0;
+  padding: 11px 0;
+  color: #333;
+  font-size: 12px;
+}
+.directory-search input:focus {
+  outline: 0;
+}
+.directory-search:focus-within {
+  outline: 2px solid #aaa;
+  outline-offset: 1px;
+}
+.directory-search input::placeholder {
+  color: #969696;
+  font-size: 11px;
+}
+.deleted-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #eee;
+}
+.deleted-row:last-child {
+  border-bottom: 0;
+}
+.deleted-row > div {
+  flex: 1;
+  min-width: 0;
+}
+.deleted-row b {
+  display: block;
+  font-size: 12px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.deleted-row small {
+  display: block;
+  font-size: 10px;
+  margin-top: 3px;
+}
+.deleted-row .button {
+  font-size: 11px;
+}
+.linked-deleted-note {
+  display: block;
+  font-size: 10px;
+  color: #888;
+  margin-top: 9px;
+}
+@media (max-width: 720px) {
+  .date-entry-controls > input[type="text"] {
+    font-size: 16px;
+    padding: 10px;
+    min-width: 0;
+  }
+  .date-entry-controls > input[type="text"]::placeholder {
+    font-size: 10px;
+  }
+  .date-entry-hint {
+    font-size: 8px !important;
+  }
+  .directory-search input {
+    font-size: 14px;
+  }
+  .directory-search input::placeholder {
+    font-size: 10px;
+  }
+  .deleted-row {
+    padding: 17px 15px;
+    gap: 10px;
+  }
+  .deleted-row .button {
+    font-size: 10px;
+    padding: 9px;
+  }
+  .deleted-row b {
+    font-size: 11px;
+  }
+}

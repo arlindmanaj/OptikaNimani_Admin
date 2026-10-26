@@ -6,7 +6,7 @@ assert(
   "Run these checks only against a local preview",
 );
 const cookie = process.env.NIMANI_TEST_COOKIE;
-assert(cookie,'Use verify-auth.mjs to run with a real local session');
+assert(cookie, "Use verify-auth.mjs to run with a real local session");
 let checks = 0;
 function check(condition, message) {
   assert(condition, message);
@@ -317,6 +317,103 @@ const free = await send(
 check(
   (await read()).purchases.find((p) => p.id === free.id).totalCents === 0,
   "A recorded zero amount stays distinct from a missing amount",
+);
+await send("purchase.delete", {
+  customerId: first.id,
+  data: { id: purchased.id, version: 2 },
+});
+state = await read();
+let removedPurchase = state.deletedPurchases.find((p) => p.id === purchased.id);
+check(
+  !state.purchases.some((p) => p.id === purchased.id) &&
+    removedPurchase?.version === 3,
+  "Deleted purchases leave active lists and retain their original data for recovery",
+);
+await send(
+  "purchase.update",
+  {
+    customerId: first.id,
+    data: { ...purchaseData, id: purchased.id, version: 3 },
+  },
+  409,
+);
+await send(
+  "purchase.restore",
+  {
+    customerId: first.id,
+    data: {
+      id: purchased.id,
+      version: 2,
+      deletedAt: removedPurchase.deletedAt,
+    },
+  },
+  409,
+);
+check(
+  true,
+  "Stale writes and stale restores cannot resurrect a deleted purchase",
+);
+await send(
+  "prescription.delete",
+  { customerId: second.id, data: { id: original.id } },
+  404,
+);
+await send("prescription.delete", {
+  customerId: first.id,
+  data: { id: original.id },
+});
+state = await read();
+const removedRx = state.deletedPrescriptions.find((p) => p.id === original.id);
+check(
+  !state.prescriptions.some((p) => p.id === original.id) &&
+    removedRx?.grid.near.os.sph === "+1.25" &&
+    state.purchases.some(
+      (p) => p.id === free.id && p.prescriptionId === original.id,
+    ),
+  "Deleting a prescription preserves its measurements, correction revisions and linked purchases",
+);
+assert.equal(
+  (
+    await fetch(origin + "/api/files?id=" + attachment.id, {
+      headers: { Cookie: cookie },
+    })
+  ).status,
+  404,
+);
+await send(
+  "purchase.create",
+  { customerId: first.id, data: purchaseData },
+  400,
+);
+check(
+  true,
+  "Deleted prescriptions cannot receive new links and their attachments stay out of active downloads",
+);
+await send("prescription.restore", {
+  customerId: first.id,
+  data: { id: original.id, deletedAt: removedRx.deletedAt },
+});
+check(
+  (
+    await fetch(origin + "/api/files?id=" + attachment.id, {
+      headers: { Cookie: cookie },
+    })
+  ).status === 200,
+  "Restoring a prescription restores access to its original attachment",
+);
+await send("purchase.restore", {
+  customerId: first.id,
+  data: {
+    id: purchased.id,
+    version: removedPurchase.version,
+    deletedAt: removedPurchase.deletedAt,
+  },
+});
+check(
+  (await read()).purchases.some(
+    (p) => p.id === purchased.id && p.version === 4,
+  ),
+  "Restored purchases return to active history with a new version",
 );
 await send("customer.archive", { customerId: first.id, version: 2 });
 await send(

@@ -1,4 +1,5 @@
 "use client";
+import DateInput from "./date-input";
 import { useState } from "react";
 import { Check, LoaderCircle } from "lucide-react";
 import {
@@ -69,13 +70,13 @@ export default function PurchaseForm({
         <div className="form-grid">
           {field(
             "Purchase date *",
-            <input
+            <DateInput
+              label={t("Purchase date *")}
               required
               autoFocus
-              type="date"
               max={today()}
               value={p.date}
-              onChange={(e) => setP({ ...p, date: e.target.value })}
+              onChange={(v) => setP({ ...p, date: v })}
             />,
           )}
           {field(

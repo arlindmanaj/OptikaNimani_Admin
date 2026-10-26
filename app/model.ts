@@ -138,6 +138,7 @@ export type Customer = CustomerInput & {
   updatedAt: string;
 };
 export type Prescription = RxInput & {
+  deletedAt: string | null;
   id: string;
   customerId: string;
   author: string;
@@ -178,6 +179,8 @@ export type Store = {
   attachments: Attachment[];
   audit: Audit[];
   purchases: Purchase[];
+  deletedPrescriptions: Prescription[];
+  deletedPurchases: Purchase[];
 };
 export const purchaseCategories = [
   "Prescription glasses",
@@ -217,6 +220,7 @@ export const purchaseInput = z.object({
 });
 export type PurchaseInput = z.infer<typeof purchaseInput>;
 export type Purchase = PurchaseInput & {
+  deletedAt: string | null;
   id: string;
   customerId: string;
   totalCents: number | null;

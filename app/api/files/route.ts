@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     if (!(file instanceof File) || file.size === 0 || file.size > max)
       return reply("Choose a non-empty file up to 8 MB", 400);
     const row = await env.DB.prepare(
-      "SELECT p.customer_id,c.archived FROM prescriptions p JOIN customers c ON c.id=p.customer_id WHERE p.id=?",
+      "SELECT p.customer_id,c.archived FROM prescriptions p JOIN customers c ON c.id=p.customer_id WHERE p.id=? AND p.deleted_at IS NULL",
     )
       .bind(rxId)
       .first<{ customer_id: string; archived: number }>();
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
   try {
     const fid = new URL(request.url).searchParams.get("id");
     const a = await env.DB.prepare(
-      "SELECT a.* FROM attachments a JOIN customers c ON c.id=a.customer_id WHERE a.id=?",
+      "SELECT a.* FROM attachments a JOIN customers c ON c.id=a.customer_id JOIN prescriptions p ON p.id=a.prescription_id WHERE a.id=? AND p.deleted_at IS NULL",
     )
       .bind(fid)
       .first<{ key: string; mime: string; name: string }>();

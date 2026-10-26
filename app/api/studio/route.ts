@@ -124,10 +124,12 @@ export async function GET() {
         archived: !!r.archived,
         demo: !!r.demo,
       })),
-      prescriptions: rs.results.map((r) => ({
-        ...camel(r),
-        grid: JSON.parse(String(r.grid)),
-      })),
+      prescriptions: rs.results
+        .filter((r) => !r.deleted_at)
+        .map((r) => ({
+          ...camel(r),
+          grid: JSON.parse(String(r.grid)),
+        })),
       families: fs.results.map((r) => ({ ...camel(r), contact: !!r.contact })),
       aftercare: as.results.map(camel),
       attachments: ats.results.map((r) => {
@@ -135,13 +137,27 @@ export async function GET() {
         return camel(safe);
       }),
       audit: logs.results.map(camel),
-      purchases: ps.results.map((r) => ({
-        ...camel(r),
-        total:
-          r.total_cents === null
-            ? ""
-            : (Number(r.total_cents) / 100).toFixed(2),
-      })),
+      purchases: ps.results
+        .filter((r) => !r.deleted_at)
+        .map((r) => ({
+          ...camel(r),
+          total:
+            r.total_cents === null
+              ? ""
+              : (Number(r.total_cents) / 100).toFixed(2),
+        })),
+      deletedPrescriptions: rs.results
+        .filter((r) => !!r.deleted_at)
+        .map((r) => ({ ...camel(r), grid: JSON.parse(String(r.grid)) })),
+      deletedPurchases: ps.results
+        .filter((r) => !!r.deleted_at)
+        .map((r) => ({
+          ...camel(r),
+          total:
+            r.total_cents === null
+              ? ""
+              : (Number(r.total_cents) / 100).toFixed(2),
+        })),
     });
   } catch (e) {
     console.error("Studio read failed", e);
@@ -340,6 +356,92 @@ export async function POST(request: Request) {
         );
       return json({ ok: true });
     }
+    if (
+      [
+        "purchase.delete",
+        "purchase.restore",
+        "prescription.delete",
+        "prescription.restore",
+      ].includes(body.action)
+    ) {
+      const restore = body.action.endsWith(".restore"),
+        table = body.action.startsWith("purchase.")
+          ? "purchases"
+          : "prescriptions";
+      const input = z
+        .object({
+          id: z.string().min(1).max(200),
+          version: z.number().int().positive().optional(),
+          deletedAt: z.string().nullable().optional(),
+        })
+        .parse(body.data);
+      const row = await db()
+        .prepare(`SELECT * FROM ${table} WHERE id=? AND customer_id=?`)
+        .bind(input.id, cid)
+        .first<Record<string, unknown>>();
+      if (!row) return json({ error: "Record was not found" }, 404);
+      if (restore ? !row.deleted_at : !!row.deleted_at)
+        return json(
+          { error: "This record changed. Reload before trying again." },
+          409,
+        );
+      if (table === "purchases" && row.version !== input.version)
+        return json(
+          { error: "This record changed. Reload before trying again." },
+          409,
+        );
+      if (restore && input.deletedAt !== row.deleted_at)
+        return json(
+          { error: "This record changed. Reload before trying again." },
+          409,
+        );
+      const statement =
+        table === "purchases"
+          ? db()
+              .prepare(
+                `UPDATE purchases SET deleted_at=?,version=version+1,updated_at=? WHERE id=? AND customer_id=? AND version=? AND deleted_at IS ?`,
+              )
+              .bind(
+                restore ? null : now,
+                now,
+                input.id,
+                cid,
+                input.version,
+                restore ? row.deleted_at : null,
+              )
+          : db()
+              .prepare(
+                "UPDATE prescriptions SET deleted_at=? WHERE id=? AND customer_id=? AND deleted_at IS ?",
+              )
+              .bind(
+                restore ? null : now,
+                input.id,
+                cid,
+                restore ? row.deleted_at : null,
+              );
+      const action =
+        table === "purchases"
+          ? restore
+            ? "Purchase restored"
+            : "Purchase deleted"
+          : restore
+            ? "Prescription restored"
+            : "Prescription deleted";
+      const result = await db().batch([
+        statement,
+        db()
+          .prepare(
+            "INSERT INTO audit (id,owner_id,customer_id,action,author,created_at) SELECT ?,?,?,?,?,? WHERE changes()>0",
+          )
+          .bind(id(), owner, cid, action, author, now),
+      ]);
+      if (!result[0].meta.changes)
+        return json(
+          { error: "This record changed. Reload before trying again." },
+          409,
+        );
+      return json({ ok: true });
+    }
     if (customer.archived)
       return json(
         { error: "Restore this customer before adding records" },
@@ -360,7 +462,9 @@ export async function POST(request: Request) {
       if (
         p.prescriptionId &&
         !(await db()
-          .prepare("SELECT id FROM prescriptions WHERE id=? AND customer_id=?")
+          .prepare(
+            "SELECT id FROM prescriptions WHERE id=? AND customer_id=? AND deleted_at IS NULL",
+          )
           .bind(p.prescriptionId, cid)
           .first())
       )
@@ -411,7 +515,7 @@ export async function POST(request: Request) {
       const result = await db().batch([
         db()
           .prepare(
-            "UPDATE purchases SET date=?,category=?,description=?,brand=?,model=?,quantity=?,total_cents=?,currency=?,prescription_id=?,reference=?,notes=?,version=version+1,updated_at=? WHERE id=? AND customer_id=? AND version=?",
+            "UPDATE purchases SET date=?,category=?,description=?,brand=?,model=?,quantity=?,total_cents=?,currency=?,prescription_id=?,reference=?,notes=?,version=version+1,updated_at=? WHERE id=? AND customer_id=? AND version=? AND deleted_at IS NULL",
           )
           .bind(
             p.date,
@@ -451,7 +555,9 @@ export async function POST(request: Request) {
         rid = id();
       if (r.supersedesId) {
         const original = await db()
-          .prepare("SELECT id FROM prescriptions WHERE id=? AND customer_id=?")
+          .prepare(
+            "SELECT id FROM prescriptions WHERE id=? AND customer_id=? AND deleted_at IS NULL",
+          )
           .bind(r.supersedesId, cid)
           .first();
         if (!original)
