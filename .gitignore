@@ -43,3 +43,7 @@ yarn-error.log*
 
 # OS metadata
 .DS_Store
+
+# Vercel CLI and local SQLite/files
+/.vercel/
+/.local-data/

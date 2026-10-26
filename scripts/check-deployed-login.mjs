@@ -1,6 +1,6 @@
 // Read-only account verification, except creating/revoking its own login session.
 import assert from 'node:assert/strict';
-const origin=process.argv[2];assert.equal(origin,'https://nimani-customer-studio.arlindmanaj.chatgpt.site');
+const origin=process.argv[2];assert(['https://nimani-customer-studio.arlindmanaj.chatgpt.site','https://nimani-admin.vercel.app'].includes(origin));
 if(process.stdin.isTTY)process.stdin.setRawMode(true);process.stderr.write('Ready for login JSON on hidden stdin.\n');process.stdin.setEncoding('utf8');
 const credentials=await new Promise(resolve=>{let text='';process.stdin.on('data',chunk=>{text+=chunk;if(text.includes('\u0003'))process.exit(130);if(/[\r\n]/.test(text)){process.stdin.pause();if(process.stdin.isTTY)process.stdin.setRawMode(false);resolve(JSON.parse(text.trim()));}});});
 const anon=await fetch(origin+'/api/studio');assert.equal(anon.status,401);

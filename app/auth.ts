@@ -45,7 +45,11 @@ export async function requireStaff() {
   redirect("/login");
 }
 export function validOrigin(request: Request) {
-  return request.headers.get("origin") === new URL(request.url).origin;
+  const host = request.headers.get("host") || new URL(request.url).host;
+  const protocol = process.env.VERCEL
+    ? "https:"
+    : new URL(request.url).protocol;
+  return request.headers.get("origin") === `${protocol}//${host}`;
 }
 export async function bootstrapAdmin() {
   const hash = env.NIMANI_INITIAL_ADMIN_HASH,

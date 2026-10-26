@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "cloudflare:workers";
-import { getStaffUser } from "../../auth";
+import { getStaffUser, validOrigin } from "../../auth";
 import {
   customerInput,
   rxInput,
@@ -167,7 +167,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getStaffUser();
   if (!user) return json({ error: "Sign in to change customer records" }, 401);
-  if (request.headers.get("origin") !== new URL(request.url).origin)
+  if (!validOrigin(request))
     return json({ error: "This request must come from the workspace" }, 403);
   if (Number(request.headers.get("content-length") || 0) > 100000)
     return json({ error: "Request is too large" }, 413);

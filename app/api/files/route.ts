@@ -1,23 +1,23 @@
 import { env } from "cloudflare:workers";
-import { getStaffUser } from "../../auth";
+import { getStaffUser, validOrigin } from "../../auth";
 export const dynamic = "force-dynamic";
 const reply = (error: string, status: number) =>
   Response.json({ error }, { status });
-const max = 8 * 1024 * 1024;
+const max = 4 * 1024 * 1024;
 export async function POST(request: Request) {
   const user = await getStaffUser();
   if (!user) return reply("Sign in to attach files", 401);
-  if (request.headers.get("origin") !== new URL(request.url).origin)
+  if (!validOrigin(request))
     return reply("Invalid request origin", 403);
   if (Number(request.headers.get("content-length") || 0) > max + 20000)
-    return reply("Files must be 8 MB or smaller", 413);
+    return reply("Files must be 4 MB or smaller", 413);
   if (!env.DB || !env.BUCKET) return reply("File storage is unavailable", 503);
   try {
     const form = await request.formData(),
       file = form.get("file"),
       rxId = String(form.get("prescriptionId") || "");
     if (!(file instanceof File) || file.size === 0 || file.size > max)
-      return reply("Choose a non-empty file up to 8 MB", 400);
+      return reply("Choose a non-empty file up to 4 MB", 400);
     const row = await env.DB.prepare(
       "SELECT p.customer_id,c.archived FROM prescriptions p JOIN customers c ON c.id=p.customer_id WHERE p.id=? AND p.deleted_at IS NULL",
     )

@@ -105,7 +105,9 @@ export async function POST(request: Request) {
       })
       .parse(body);
     // Persistent counters apply before password work; no raw emails or addresses are kept in them.
-    const ip = request.headers.get("cf-connecting-ip") || "local";
+    const ip = process.env.VERCEL
+      ? request.headers.get("x-vercel-forwarded-for")?.split(",")[0].trim() || "unknown"
+      : request.headers.get("cf-connecting-ip") || "local";
     const buckets = [
       { key: "email:" + tokenHash(data.email), limit: 10 },
       { key: "ip:" + tokenHash(ip), limit: 40 },

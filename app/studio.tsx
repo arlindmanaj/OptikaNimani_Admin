@@ -2539,8 +2539,8 @@ export default function Studio({
                           const file = e.target.files?.[0];
                           if (!file) return;
                           setError("");
-                          if (file.size > 8 * 1024 * 1024) {
-                            setError("Files must be 8 MB or smaller");
+                          if (file.size > 4 * 1024 * 1024) {
+                            setError("Files must be 4 MB or smaller");
                             e.target.value = "";
                             return;
                           }
@@ -2571,7 +2571,7 @@ export default function Studio({
                       />
                     </label>
                   )}
-                  <small>{t("JPG, PNG or PDF · up to 8 MB each")}</small>
+                  <small>{t("JPG, PNG or PDF · up to 4 MB each")}</small>
                 </div>
               </div>
               <div className="dialog-actions">
